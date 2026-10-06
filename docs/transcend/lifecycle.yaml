@@ -1,0 +1,47 @@
+version: "1.0"
+
+project: jarvis-nexus
+workflow: post-code-devsecops
+
+stages:
+  - id: plan
+    name: PLAN
+    objective: Analyze intent and determine the required change.
+
+  - id: create
+    name: CREATE
+    objective: Produce or modify implementation artifacts.
+
+  - id: verify
+    name: VERIFY
+    objective: Validate correctness through automated checks.
+
+  - id: package
+    name: PACKAGE
+    objective: Produce a reproducible release artifact.
+
+  - id: secure
+    name: SECURE
+    objective: Detect security problems before release.
+
+  - id: release
+    name: RELEASE
+    objective: Publish a verified artifact.
+
+  - id: configure
+    name: CONFIGURE
+    objective: Apply runtime configuration safely.
+
+  - id: monitor
+    name: MONITOR
+    objective: Validate runtime health after release.
+
+  - id: govern
+    name: GOVERN
+    objective: Record lifecycle evidence and final outcome.
+
+execution:
+  target_level: hands-off
+  failure_policy: safe-stop-and-remediate
+  max_remediation_attempts: 2
+  require_evidence: true
