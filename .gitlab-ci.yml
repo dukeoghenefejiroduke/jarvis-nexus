@@ -17,12 +17,14 @@ verify:
   image: python:3.12-slim
   script:
     - python --version
-    - python -m unittest discover -s tests -v 2>&1 | tee test-results.txt
+    - python -m unittest discover -s tests -v
   artifacts:
     when: always
     paths:
       - test-results.txt
     expire_in: 1 week
+  after_script:
+    - python -m unittest discover -s tests -v > test-results.txt 2>&1 || test "$CI_JOB_STATUS" = "success"
 
 security:
   stage: secure
@@ -50,7 +52,20 @@ package:
   script:
     - python -m compileall -q jarvis_nexus
     - mkdir -p dist
-        - tar --exclude='.git' --exclude='data/*.db' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.log' --exclude='*.pem' --exclude='*.key' --exclude='.env' --exclude='.env.*' --exclude='dist' -czf dist/jarvis-nexus-transcend.tar.gz .
+    - >
+      tar
+      --exclude=.git
+      --exclude=data/*.db
+      --exclude=__pycache__
+      --exclude='*.pyc'
+      --exclude='*.log'
+      --exclude='*.pem'
+      --exclude='*.key'
+      --exclude=.env
+      --exclude='.env.*'
+      --exclude=dist
+      -czf dist/jarvis-nexus-transcend.tar.gz
+      .
   artifacts:
     paths:
       - dist/jarvis-nexus-transcend.tar.gz
