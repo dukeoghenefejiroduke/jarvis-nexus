@@ -31,6 +31,17 @@ class TestDemoUI(unittest.TestCase):
         self.assertEqual(req.status, 200)
         html = req.read().decode("utf-8")
         self.assertIn("JARVIS Nexus", html)
+        self.assertIn("</script>", html)
+        self.assertNotIn("</style>\n</body>", html)
+
+    def test_index_page_escapes_dynamic_action_values(self) -> None:
+        """Regression test for quoted values in dynamically generated action handlers."""
+        req = urllib.request.urlopen(f"{self.base_url}/")
+        html = req.read().decode("utf-8")
+        self.assertIn("function escapeJsString", html)
+        self.assertIn('.replace(/\\\\/g, "\\\\\\\\")', html)
+        self.assertIn("deleteMemory('${escapeJsString(m.key)}')", html)
+        self.assertIn("viewFile('${escapeJsString(f.name)}')", html)
 
     def test_api_status(self) -> None:
         """Test /api/status endpoint."""
@@ -86,6 +97,102 @@ class TestDemoUI(unittest.TestCase):
         req_get = urllib.request.urlopen(f"{self.base_url}/api/tasks")
         get_data = json.loads(req_get.read().decode("utf-8"))
         self.assertTrue(len(get_data["tasks"]) > 0)
+
+    def test_api_invalid_task_payload_returns_json_error(self) -> None:
+        """Invalid task data should not abort the HTTP connection."""
+        payload = json.dumps({"title": "Bad Task", "priority": "urgent"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/tasks",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertIn("error", data)
+
+    def test_api_rejects_non_object_json_payload(self) -> None:
+        """POST endpoints expect JSON objects so handlers can safely use dict access."""
+        payload = json.dumps(["not", "an", "object"]).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(data["error"], "JSON request body must be an object.")
+
+    def test_api_task_actions(self) -> None:
+        """Test task creation, completion, and deletion."""
+        payload = json.dumps({"title": "Complete Me", "priority": "medium", "status": "pending"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/tasks",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        task_id = data["task_id"]
+        self.assertGreater(task_id, 0)
+
+        # Complete task
+        comp_payload = json.dumps({"id": task_id}).encode("utf-8")
+        req_comp = urllib.request.Request(
+            f"{self.base_url}/api/tasks/complete",
+            data=comp_payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp_comp = urllib.request.urlopen(req_comp)
+        comp_data = json.loads(resp_comp.read().decode("utf-8"))
+        self.assertTrue(comp_data["success"])
+
+        # Delete task
+        req_del = urllib.request.Request(
+            f"{self.base_url}/api/tasks?id={task_id}",
+            method="DELETE"
+        )
+        resp_del = urllib.request.urlopen(req_del)
+        del_data = json.loads(resp_del.read().decode("utf-8"))
+        self.assertTrue(del_data["success"])
+
+    def test_api_file_inspection(self) -> None:
+        """Test file read, CSV inspection, and JSON inspection APIs."""
+        payload = json.dumps({"filename": "notes.md"}).encode("utf-8")
+        req_read = urllib.request.Request(
+            f"{self.base_url}/api/files/read",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp_read = urllib.request.urlopen(req_read)
+        read_data = json.loads(resp_read.read().decode("utf-8"))
+        self.assertEqual(read_data["status"], "success")
+
+        payload_csv = json.dumps({"filename": "sales.csv"}).encode("utf-8")
+        req_csv = urllib.request.Request(
+            f"{self.base_url}/api/files/inspect_csv",
+            data=payload_csv,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp_csv = urllib.request.urlopen(req_csv)
+        csv_data = json.loads(resp_csv.read().decode("utf-8"))
+        self.assertEqual(csv_data["status"], "success")
+
+        payload_json = json.dumps({"filename": "project.json"}).encode("utf-8")
+        req_json = urllib.request.Request(
+            f"{self.base_url}/api/files/inspect_json",
+            data=payload_json,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp_json = urllib.request.urlopen(req_json)
+        json_data = json.loads(resp_json.read().decode("utf-8"))
+        self.assertEqual(json_data["status"], "success")
 
     def test_api_files_skills_context(self) -> None:
         """Test files, skills, and context endpoints."""

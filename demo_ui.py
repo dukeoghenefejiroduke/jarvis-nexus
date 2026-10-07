@@ -7,6 +7,7 @@ Optimized for mobile (Android/Termux) and desktop browsers.
 
 import os
 import json
+import time
 import threading
 import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
@@ -22,7 +23,7 @@ from jarvis_nexus.context import ContextManager
 from jarvis_nexus.tools import ToolRegistry
 from jarvis_nexus.agent import Agent
 from jarvis_nexus.models import MockModelProvider
-from jarvis_nexus.security import safe_exception_message
+from jarvis_nexus.security import redact_secrets, safe_exception_message
 
 
 # Global shared instances for the Demo UI session
@@ -121,13 +122,13 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     </header>
 
     <nav>
-        <button class="active" onclick="switchTab('chat')">💬 Chat</button>
-        <button onclick="switchTab('memory')">🧠 Memory</button>
-        <button onclick="switchTab('tasks')">📋 Tasks</button>
-        <button onclick="switchTab('files')">📁 Workspace</button>
-        <button onclick="switchTab('skills')">⚡ Skills</button>
-        <button onclick="switchTab('context')">🔍 Context</button>
-        <button onclick="runDemoFlow()">🚀 Demo Flow</button>
+        <button id="navChatBtn" class="active" onclick="switchTab('chat', this)">💬 Chat</button>
+        <button id="navMemBtn" onclick="switchTab('memory', this)">🧠 Memory</button>
+        <button id="navTasksBtn" onclick="switchTab('tasks', this)">📋 Tasks</button>
+        <button id="navFilesBtn" onclick="switchTab('files', this)">📁 Workspace</button>
+        <button id="navSkillsBtn" onclick="switchTab('skills', this)">⚡ Skills</button>
+        <button id="navContextBtn" onclick="switchTab('context', this)">🔍 Context</button>
+        <button id="navDemoFlowBtn" onclick="runDemoFlow()">🚀 Demo Flow</button>
     </nav>
 
     <!-- CHAT TAB -->
@@ -140,9 +141,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 </div>
             </div>
             <div class="chat-input-area">
-                <input type="text" id="chatInput" placeholder="Type a message or instruction..." onkeypress="if(event.key==='Enter') sendChat()">
-                <button class="btn" onclick="sendChat()">Send</button>
-                <button class="btn btn-secondary" onclick="clearChat()">Clear</button>
+                <input type="text" id="chatInput" placeholder="Type a message or instruction...">
+                <button id="sendBtn" class="btn">Send</button>
+                <button id="clearBtn" class="btn btn-secondary">Clear</button>
             </div>
         </div>
     </div>
@@ -162,14 +163,14 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <option value="task">task</option>
                     <option value="general" selected>general</option>
                 </select>
-                <button class="btn" onclick="saveMemory()">Save Memory</button>
+                <button id="saveMemBtn" class="btn" onclick="saveMemory()">Save Memory</button>
             </div>
         </div>
         <div class="card">
             <h2>Stored Memories</h2>
             <div style="margin-bottom: 10px; display:flex; gap:8px;">
                 <input type="text" id="memSearchQuery" placeholder="Search memories..." oninput="loadMemories()">
-                <button class="btn btn-secondary" onclick="loadMemories()">Refresh</button>
+                <button id="refreshMemBtn" class="btn btn-secondary" onclick="loadMemories()">Refresh</button>
             </div>
             <div style="overflow-x: auto;">
                 <table>
@@ -193,12 +194,12 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     <option value="high">High</option>
                     <option value="critical">Critical</option>
                 </select>
-                <button class="btn" onclick="createTask()">Create Task</button>
+                <button id="createTaskBtn" class="btn" onclick="createTask()">Create Task</button>
             </div>
         </div>
         <div class="card">
             <h2>Active Tasks</h2>
-            <div style="margin-bottom: 10px;"><button class="btn btn-secondary" onclick="loadTasks()">Refresh Tasks</button></div>
+            <div style="margin-bottom: 10px;"><button id="refreshTasksBtn" class="btn btn-secondary" onclick="loadTasks()">Refresh Tasks</button></div>
             <div style="overflow-x: auto;">
                 <table>
                     <thead><tr><th>ID</th><th>Title</th><th>Priority</th><th>Status</th><th>Actions</th></tr></thead>
@@ -212,7 +213,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="tab-files" class="tab-content">
         <div class="card">
             <h2>Workspace Files</h2>
-            <button class="btn btn-secondary" onclick="loadFiles()">Refresh Files</button>
+            <button id="refreshFilesBtn" class="btn btn-secondary" onclick="loadFiles()">Refresh Files</button>
             <div style="overflow-x: auto; margin-top: 10px;">
                 <table>
                     <thead><tr><th>Name</th><th>Size (Bytes)</th><th>Actions</th></tr></thead>
@@ -238,37 +239,57 @@ HTML_TEMPLATE = """<!DOCTYPE html>
     <div id="tab-context" class="tab-content">
         <div class="card">
             <h2>Project Context Intelligence Summary</h2>
-            <button class="btn" onclick="loadContext()">Refresh Context</button>
+            <button id="refreshContextBtn" class="btn" onclick="loadContext()">Refresh Context</button>
             <pre id="contextPre" style="margin-top: 10px; max-height: 500px;">Click refresh to load project context.</pre>
         </div>
     </div>
 
     <script>
-        function switchTab(tabName) {
-            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-            document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
-            document.getElementById('tab-' + tabName).classList.add('active');
-            event.target.classList.add('active');
+        function switchTab(tabName, btnElement) {
+            try {
+                document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+                document.querySelectorAll('nav button').forEach(el => el.classList.remove('active'));
+                
+                const tabEl = document.getElementById('tab-' + tabName);
+                if (tabEl) {
+                    tabEl.classList.add('active');
+                }
+                
+                if (btnElement) {
+                    btnElement.classList.add('active');
+                } else {
+                    const btns = document.querySelectorAll('nav button');
+                    btns.forEach(b => {
+                        if (b.getAttribute('onclick') && b.getAttribute('onclick').includes(`switchTab('${tabName}')`)) {
+                            b.classList.add('active');
+                        }
+                    });
+                }
 
-            if (tabName === 'memory') loadMemories();
-            if (tabName === 'tasks') loadTasks();
-            if (tabName === 'files') loadFiles();
-            if (tabName === 'skills') loadSkills();
-            if (tabName === 'context') loadContext();
+                if (tabName === 'memory') loadMemories();
+                if (tabName === 'tasks') loadTasks();
+                if (tabName === 'files') loadFiles();
+                if (tabName === 'skills') loadSkills();
+                if (tabName === 'context') loadContext();
+            } catch (err) {
+                console.error('Error switching tab:', err);
+            }
         }
 
         async function sendChat() {
             const input = document.getElementById('chatInput');
+            if (!input) return;
             const msg = input.value.trim();
             if (!msg) return;
 
             const messagesDiv = document.getElementById('messages');
+            if (!messagesDiv) return;
+
             messagesDiv.innerHTML += `<div class="message user"><div class="meta">USER</div>${escapeHtml(msg)}</div>`;
             input.value = '';
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
-            // Loading indicator
-            const loadingId = 'loading_' + Date.now();
+            const loadingId = 'loading_' + Math.random().toString(36).substring(2);
             messagesDiv.innerHTML += `<div id="${loadingId}" class="message assistant"><div class="meta">JARVIS</div>Thinking...</div>`;
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
 
@@ -279,7 +300,9 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     body: JSON.stringify({message: msg})
                 });
                 const data = await res.json();
-                document.getElementById(loadingId).remove();
+                
+                const loadingEl = document.getElementById(loadingId);
+                if (loadingEl) loadingEl.remove();
 
                 let html = `<div class="message assistant"><div class="meta">JARVIS</div>`;
                 if (data.tool_activity && data.tool_activity.length > 0) {
@@ -287,33 +310,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         html += `<div class="tool-activity">🔧 Using tool: <b>${escapeHtml(act.tool)}</b></div>`;
                     });
                 }
-                html += `${escapeHtml(data.response)}</div>`;
+                html += `${escapeHtml(data.response || 'No response')}</div>`;
                 messagesDiv.innerHTML += html;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
             } catch (err) {
-                document.getElementById(loadingId).remove();
-                messagesDiv.innerHTML += `<div class="message assistant"><div class="meta">JARVIS</div>Error communicating with backend.</div>`;
+                const loadingEl = document.getElementById(loadingId);
+                if (loadingEl) loadingEl.remove();
+                messagesDiv.innerHTML += `<div class="message assistant"><div class="meta">JARVIS</div>Error communicating with backend: ${escapeHtml(err.message)}</div>`;
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
             }
         }
 
         function clearChat() {
-            document.getElementById('messages').innerHTML = `<div class="message assistant"><div class="meta">JARVIS</div>Chat history cleared.</div>`;
+            const messagesDiv = document.getElementById('messages');
+            if (messagesDiv) {
+                messagesDiv.innerHTML = `<div class="message assistant"><div class="meta">JARVIS</div>Chat history cleared.</div>`;
+            }
         }
 
         async function loadMemories() {
-            const q = document.getElementById('memSearchQuery').value;
-            const res = await fetch('/api/memories?query=' + encodeURIComponent(q));
-            const data = await res.json();
-            const tbody = document.getElementById('memoryTableBody');
-            tbody.innerHTML = '';
-            data.memories.forEach(m => {
-                tbody.innerHTML += `<tr>
-                    <td><b>${escapeHtml(m.key)}</b></td>
-                    <td><span class="badge">${escapeHtml(m.category)}</span></td>
-                    <td>${escapeHtml(m.value)}</td>
-                    <td><button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteMemory('${escapeHtml(m.key)}')">Delete</button></td>
-                </tr>`;
-            });
+            try {
+                const searchInput = document.getElementById('memSearchQuery');
+                const q = searchInput ? searchInput.value : '';
+                const res = await fetch('/api/memories?query=' + encodeURIComponent(q));
+                const data = await res.json();
+                const tbody = document.getElementById('memoryTableBody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    (data.memories || []).forEach(m => {
+                        tbody.innerHTML += `<tr>
+                            <td><b>${escapeHtml(m.key)}</b></td>
+                            <td><span class="badge">${escapeHtml(m.category)}</span></td>
+                            <td>${escapeHtml(m.value)}</td>
+                            <td><button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteMemory('${escapeJsString(m.key)}')">Delete</button></td>
+                        </tr>`;
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading memories:', err);
+            }
         }
 
         async function saveMemory() {
@@ -339,22 +374,28 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         async function loadTasks() {
-            const res = await fetch('/api/tasks');
-            const data = await res.json();
-            const tbody = document.getElementById('taskTableBody');
-            tbody.innerHTML = '';
-            data.tasks.forEach(t => {
-                tbody.innerHTML += `<tr>
-                    <td>#${t.id}</td>
-                    <td><b>${escapeHtml(t.title)}</b><br><small style="color:var(--text-secondary);">${escapeHtml(t.description || '')}</small></td>
-                    <td><span class="badge">${escapeHtml(t.priority)}</span></td>
-                    <td>${escapeHtml(t.status)}</td>
-                    <td>
-                        ${t.status !== 'completed' ? `<button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="completeTask(${t.id})">Complete</button>` : ''}
-                        <button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteTask(${t.id})">Delete</button>
-                    </td>
-                </tr>`;
-            });
+            try {
+                const res = await fetch('/api/tasks');
+                const data = await res.json();
+                const tbody = document.getElementById('taskTableBody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    (data.tasks || []).forEach(t => {
+                        tbody.innerHTML += `<tr>
+                            <td>#${t.id}</td>
+                            <td><b>${escapeHtml(t.title)}</b><br><small style="color:var(--text-secondary);">${escapeHtml(t.description || '')}</small></td>
+                            <td><span class="badge">${escapeHtml(t.priority)}</span></td>
+                            <td>${escapeHtml(t.status)}</td>
+                            <td>
+                                ${t.status !== 'completed' ? `<button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="completeTask(${t.id})">Complete</button>` : ''}
+                                <button class="btn btn-danger" style="padding:4px 8px; font-size:0.75rem;" onclick="deleteTask(${t.id})">Delete</button>
+                            </td>
+                        </tr>`;
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading tasks:', err);
+            }
         }
 
         async function createTask() {
@@ -389,21 +430,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         async function loadFiles() {
-            const res = await fetch('/api/files');
-            const data = await res.json();
-            const tbody = document.getElementById('fileTableBody');
-            tbody.innerHTML = '';
-            data.files.forEach(f => {
-                tbody.innerHTML += `<tr>
-                    <td><b>${escapeHtml(f.name)}</b></td>
-                    <td>${f.size_bytes}</td>
-                    <td>
-                        <button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="viewFile('${escapeHtml(f.name)}')">View</button>
-                        ${f.extension === '.csv' ? `<button class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" onclick="inspectCsv('${escapeHtml(f.name)}')">Inspect CSV</button>` : ''}
-                        ${f.extension === '.json' ? `<button class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" onclick="inspectJson('${escapeHtml(f.name)}')">Inspect JSON</button>` : ''}
-                    </td>
-                </tr>`;
-            });
+            try {
+                const res = await fetch('/api/files');
+                const data = await res.json();
+                const tbody = document.getElementById('fileTableBody');
+                if (tbody) {
+                    tbody.innerHTML = '';
+                    (data.files || []).forEach(f => {
+                        tbody.innerHTML += `<tr>
+                            <td><b>${escapeHtml(f.name)}</b></td>
+                            <td>${f.size_bytes}</td>
+                            <td>
+                                <button class="btn" style="padding:4px 8px; font-size:0.75rem;" onclick="viewFile('${escapeJsString(f.name)}')">View</button>
+                                ${f.extension === '.csv' ? `<button class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" onclick="inspectCsv('${escapeJsString(f.name)}')">Inspect CSV</button>` : ''}
+                                ${f.extension === '.json' ? `<button class="btn btn-secondary" style="padding:4px 8px; font-size:0.75rem;" onclick="inspectJson('${escapeJsString(f.name)}')">Inspect JSON</button>` : ''}
+                            </td>
+                        </tr>`;
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading files:', err);
+            }
         }
 
         async function viewFile(filename) {
@@ -444,51 +491,135 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         async function loadSkills() {
-            const res = await fetch('/api/skills');
-            const data = await res.json();
-            const container = document.getElementById('skillsContainer');
-            container.innerHTML = '';
-            data.skills.forEach(s => {
-                container.innerHTML += `<div class="card" style="margin-bottom:8px;">
-                    <h3 style="color:var(--accent); font-size:0.95rem;">${escapeHtml(s.name)}</h3>
-                    <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px;">${escapeHtml(s.description)}</p>
-                </div>`;
-            });
+            try {
+                const res = await fetch('/api/skills');
+                const data = await res.json();
+                const container = document.getElementById('skillsContainer');
+                if (container) {
+                    container.innerHTML = '';
+                    (data.skills || []).forEach(s => {
+                        container.innerHTML += `<div class="card" style="margin-bottom:8px;">
+                            <h3 style="color:var(--accent); font-size:0.95rem;">${escapeHtml(s.name)}</h3>
+                            <p style="font-size:0.85rem; color:var(--text-secondary); margin-top:4px;">${escapeHtml(s.description)}</p>
+                        </div>`;
+                    });
+                }
+            } catch (err) {
+                console.error('Error loading skills:', err);
+            }
         }
 
         async function loadContext() {
-            const res = await fetch('/api/context');
-            const data = await res.json();
-            document.getElementById('contextPre').textContent = JSON.stringify(data, null, 2);
+            try {
+                const res = await fetch('/api/context');
+                const data = await res.json();
+                const pre = document.getElementById('contextPre');
+                if (pre) {
+                    pre.textContent = JSON.stringify(data, null, 2);
+                }
+            } catch (err) {
+                console.error('Error loading context:', err);
+            }
         }
 
         async function runDemoFlow() {
-            switchTab('chat');
-            const messagesDiv = document.getElementById('messages');
-            messagesDiv.innerHTML += `<div class="message assistant" style="background:#0369a1;"><div class="meta">DEMO FLOW</div>Starting 7-Step JARVIS Demo Sequence...</div>`;
+            try {
+                switchTab('chat');
+                const messagesDiv = document.getElementById('messages');
+                if (messagesDiv) {
+                    messagesDiv.innerHTML += `<div class="message assistant" style="background:#0369a1;"><div class="meta">DEMO FLOW</div>Starting 7-Step JARVIS Demo Sequence...</div>`;
+                }
 
-            const steps = [
-                "Hello JARVIS, please introduce yourself.",
-                "What is 27 * 14?",
-                "Remember that my favorite project is JARVIS Nexus.",
-                "What is my favorite project?",
-                "Analyze sales.csv and tell me the average price.",
-                "Create a high-priority task to test the final JARVIS demo.",
-                "What am I currently working on?"
-            ];
+                const steps = [
+                    "Hello JARVIS, please introduce yourself.",
+                    "What is 27 * 14?",
+                    "Remember that my favorite project is JARVIS Nexus.",
+                    "What is my favorite project?",
+                    "Analyze sales.csv and tell me the average price.",
+                    "Create a high-priority task to test the final JARVIS demo.",
+                    "What am I currently working on?"
+                ];
 
-            for (let i = 0; i < steps.length; i++) {
-                await new Promise(r => setTimeout(r, 800));
-                document.getElementById('chatInput').value = steps[i];
-                await sendChat();
+                for (let i = 0; i < steps.length; i++) {
+                    await new Promise(r => setTimeout(r, 800));
+                    const input = document.getElementById('chatInput');
+                    if (input) {
+                        input.value = steps[i];
+                        await sendChat();
+                    }
+                }
+            } catch (err) {
+                console.error('Error running demo flow:', err);
             }
         }
 
         function escapeHtml(str) {
-            if (!str) return '';
-            return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+            if (str === null || str === undefined) return '';
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#39;");
         }
-    </style>
+
+        function escapeJsString(str) {
+            if (str === null || str === undefined) return '';
+            return escapeHtml(String(str)
+                .replace(/\\\\/g, "\\\\\\\\")
+                .replace(/'/g, "\\\\'")
+                .replace(/\\r/g, "\\\\r")
+                .replace(/\\n/g, "\\\\n"));
+        }
+
+        // Global window bindings for cross-platform and mobile webview click reliability
+        window.switchTab = switchTab;
+        window.sendChat = sendChat;
+        window.clearChat = clearChat;
+        window.loadMemories = loadMemories;
+        window.saveMemory = saveMemory;
+        window.deleteMemory = deleteMemory;
+        window.loadTasks = loadTasks;
+        window.createTask = createTask;
+        window.completeTask = completeTask;
+        window.deleteTask = deleteTask;
+        window.loadFiles = loadFiles;
+        window.viewFile = viewFile;
+        window.inspectCsv = inspectCsv;
+        window.inspectJson = inspectJson;
+        window.loadSkills = loadSkills;
+        window.loadContext = loadContext;
+        window.runDemoFlow = runDemoFlow;
+
+        window.onerror = function(msg, url, line) {
+            console.error('Browser error:', msg, 'at', url, 'line', line);
+            fetch('/api/log', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({level: 'error', message: `${msg} (${url}:${line})`})
+            }).catch(() => {});
+        };
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const sendBtn = document.getElementById('sendBtn');
+            if (sendBtn) {
+                sendBtn.addEventListener('click', sendChat);
+            }
+            const clearBtn = document.getElementById('clearBtn');
+            if (clearBtn) {
+                clearBtn.addEventListener('click', clearChat);
+            }
+            const chatInput = document.getElementById('chatInput');
+            if (chatInput) {
+                chatInput.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        sendChat();
+                    }
+                });
+            }
+            console.log('JARVIS Nexus UI loaded successfully.');
+        });
+    </script>
 </body>
 </html>
 """
@@ -496,6 +627,19 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
 class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for JARVIS Nexus Demo UI API and frontend."""
+
+    def handle(self) -> None:
+        try:
+            super().handle()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+    def do_OPTIONS(self) -> None:
+        self.send_response(200)
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Content-Type")
+        self.end_headers()
 
     def do_GET(self) -> None:
         parsed_url = urllib.parse.urlparse(self.path)
@@ -505,6 +649,10 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
         if path == "/" or path == "/index.html":
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+            self.send_header("Pragma", "no-cache")
+            self.send_header("Expires", "0")
             self.end_headers()
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
 
@@ -541,6 +689,7 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
 
         else:
             self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(b"Not Found")
 
@@ -552,28 +701,39 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
 
         try:
             data = json.loads(body.decode("utf-8"))
-        except Exception:
-            data = {}
+        except Exception as exc:
+            self._send_json({"error": safe_exception_message(exc)})
+            return
 
+        if not isinstance(data, dict):
+            self._send_json({"error": "JSON request body must be an object."})
+            return
+
+        try:
+            self._handle_post(path, data)
+        except Exception as exc:
+            self._send_json({"error": safe_exception_message(exc)})
+
+    def _handle_post(self, path: str, data: Dict[str, Any]) -> None:
         if path == "/api/chat":
             msg = data.get("message", "")
+            print("\n================ CHAT SESSION START ================")
+            print(f"[User Message]: {redact_secrets(str(msg))}")
             if not msg:
                 self._send_json({"response": "Please provide a message.", "tool_activity": []})
                 return
 
-            # Clear agent history or maintain conversation
-            # Let's run agent chat and track tool activity
             tool_activity = []
+            response_text = agent.chat(str(msg))
             
-            # Intercept tool calls or check what agent did
-            # To capture tool activity, we can inspect tool calls in response or history
-            response_text = agent.chat(msg)
-            
-            # Extract recent tool activity from history if any tool was executed
             history = agent.get_history()
             for h in history:
                 if h.role == "tool" and hasattr(h, "name") and h.name:
                     tool_activity.append({"tool": h.name})
+
+            print(f"[JARVIS Response]: {redact_secrets(str(response_text))}")
+            print(f"[Tools Used]: {[t['tool'] for t in tool_activity]}")
+            print("================== CHAT SESSION END ==================\n")
 
             self._send_json({
                 "response": response_text,
@@ -584,7 +744,7 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             key = data.get("key", "")
             value = data.get("value", "")
             category = data.get("category", "general")
-            success = memory_store.save_memory(key, value, category)
+            success = memory_store.save_memory(str(key), str(value), str(category))
             self._send_json({"success": success})
 
         elif path == "/api/tasks":
@@ -592,33 +752,41 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             description = data.get("description", "")
             priority = data.get("priority", "medium")
             status = data.get("status", "pending")
-            task_id = task_store.create_task(title=title, description=description, priority=priority, status=status)
+            task_id = task_store.create_task(title=str(title), description=str(description), priority=str(priority), status=str(status))
             self._send_json({"task_id": task_id})
 
         elif path == "/api/tasks/complete":
             task_id = data.get("id")
-            success = task_store.complete_task(task_id) if task_id else False
+            success = task_store.complete_task(int(task_id)) if task_id else False
             self._send_json({"success": success})
 
         elif path == "/api/files/read":
             filename = data.get("filename", "")
-            res = file_manager.read_file(filename)
+            res = file_manager.read_file(str(filename))
             self._send_json(res)
 
         elif path == "/api/files/inspect_csv":
             filename = data.get("filename", "")
-            res = file_manager.inspect_csv(filename)
+            res = file_manager.inspect_csv(str(filename))
             self._send_json(res)
 
         elif path == "/api/files/inspect_json":
             filename = data.get("filename", "")
-            res = file_manager.inspect_json(filename)
+            res = file_manager.inspect_json(str(filename))
             self._send_json(res)
+
+        elif path == "/api/log":
+            level = str(data.get("level", "info"))[:20]
+            message = redact_secrets(str(data.get("message", "")))[:500]
+            print(f"[BROWSER {level.upper()}] {message}")
+            self._send_json({"logged": True})
 
         else:
             self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(b"Not Found")
+            return
 
     def do_DELETE(self) -> None:
         parsed_url = urllib.parse.urlparse(self.path)
@@ -640,18 +808,24 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
 
         else:
             self.send_response(404)
+            self.send_header("Access-Control-Allow-Origin", "*")
             self.end_headers()
             self.wfile.write(b"Not Found")
 
     def _send_json(self, data: Any) -> None:
         self.send_response(200)
         self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Cache-Control", "no-cache, no-store, must-revalidate")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Expires", "0")
         self.end_headers()
         self.wfile.write(json.dumps(data).encode("utf-8"))
 
     def log_message(self, format: str, *args: Any) -> None:
-        """Suppress default HTTP server logging for clean output."""
-        pass
+        """Log HTTP requests and session activity with timestamps."""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] [API] {format % args}")
 
 
 def run_server(port: int = 8000, background: bool = False) -> Optional[HTTPServer]:
