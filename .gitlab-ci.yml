@@ -50,18 +50,7 @@ package:
   script:
     - python -m compileall -q jarvis_nexus
     - mkdir -p dist
-    - tar \
-        --exclude='.git' \
-        --exclude='data/*.db' \
-        --exclude='__pycache__' \
-        --exclude='*.pyc' \
-        --exclude='*.log' \
-        --exclude='*.pem' \
-        --exclude='*.key' \
-        --exclude='.env' \
-        --exclude='.env.*' \
-        --exclude='dist' \
-        -czf dist/jarvis-nexus-transcend.tar.gz .
+        - tar --exclude='.git' --exclude='data/*.db' --exclude='__pycache__' --exclude='*.pyc' --exclude='*.log' --exclude='*.pem' --exclude='*.key' --exclude='.env' --exclude='.env.*' --exclude='dist' -czf dist/jarvis-nexus-transcend.tar.gz .
   artifacts:
     paths:
       - dist/jarvis-nexus-transcend.tar.gz
