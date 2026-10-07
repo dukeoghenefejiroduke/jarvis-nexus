@@ -297,7 +297,6 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
 
         function clearChat() {
-            document.getElementById('messages.').innerHTML = ''; // safe
             document.getElementById('messages').innerHTML = `<div class="message assistant"><div class="meta">JARVIS</div>Chat history cleared.</div>`;
         }
 
@@ -657,13 +656,13 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
 
 def run_server(port: int = 8000, background: bool = False) -> Optional[HTTPServer]:
     """Run the JARVIS Nexus Demo UI HTTP server."""
-    server = HTTPServer(("127.0.0.1", port), JarvisDemoHTTPHandler)
+    server = HTTPServer(("0.0.0.0", port), JarvisDemoHTTPHandler)
     if background:
         thread = threading.Thread(target=server.serve_forever, daemon=True)
         thread.start()
         return server
     else:
-        print(f"Starting JARVIS Nexus Demo UI at http://127.0.0.1:{port}")
+        print(f"Starting JARVIS Nexus Demo UI at http://0.0.0.0:{port}")
         print("Press Ctrl+C to stop.")
         try:
             server.serve_forever()

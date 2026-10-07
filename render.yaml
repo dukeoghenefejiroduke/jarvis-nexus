@@ -1,0 +1,7 @@
+services:
+  - type: web
+    name: jarvis-nexus-transcend
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: python demo_ui.py
