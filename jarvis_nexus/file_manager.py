@@ -11,6 +11,8 @@ class FileManager:
     """Manages secure file inspection within a controlled workspace directory."""
 
     def __init__(self, workspace_dir: Optional[str] = None, max_file_size_bytes: int = 10 * 1024 * 1024) -> None:
+        if workspace_dir is None:
+            workspace_dir = os.environ.get("JARVIS_WORKSPACE")
         self.workspace_dir = os.path.abspath(workspace_dir or "data/workspace")
         os.makedirs(self.workspace_dir, exist_ok=True)
         self.max_file_size_bytes = max_file_size_bytes
@@ -220,3 +222,15 @@ class FileManager:
         except Exception as e:
             print(f"Error searching files: {e}")
         return results
+
+    def write_file(self, filename: str, content: str) -> bool:
+        """Write or upload document content to the workspace with strict path sanitization."""
+        try:
+            safe_path = self._sanitize_path(filename)
+            os.makedirs(os.path.dirname(safe_path), exist_ok=True)
+            with open(safe_path, 'w', encoding='utf-8') as f:
+                f.write(content)
+            return True
+        except Exception as e:
+            print(f"Error writing file '{filename}': {e}")
+            return False

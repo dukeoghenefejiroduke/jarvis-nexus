@@ -23,8 +23,8 @@
 
 ## Ending Variants
 
-### Variant A: Offline / Demo-Safe Ending (Recommended for current offline evaluation)
-> *"Because live Nebius billing onboarding requires payment card verification, we demonstrated JARVIS Nexus using our robust offline MockModelProvider, running all 67 unit and hardening tests successfully with zero external dependencies."*
+### Variant A: Offline / Demo-Safe Ending (Recommended for offline evaluation)
+> *"Demonstrating JARVIS Nexus using our robust offline MockModelProvider, running all 143 unit and hardening tests successfully with zero external dependencies, alongside full live cloud support via Nebius Token Factory."*
 
 ### Variant B: Live Nebius Ending (To be used after verified cloud API onboarding)
 > *"Powered live by NVIDIA Nemotron running on Nebius Token Factory, JARVIS Nexus successfully executed all cloud-backed reasoning and tool-calling flows in real-time."*

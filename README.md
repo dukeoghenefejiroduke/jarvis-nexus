@@ -1,6 +1,5 @@
 # JARVIS Nexus
 
-> **Nebius x NVIDIA Global AI Hackathon 2026**  
 > An enterprise-grade, offline-capable modular AI assistant framework powered by NVIDIA Nemotron via Nebius Token Factory.
 
 ---
@@ -48,10 +47,15 @@ Developers need AI assistants that maintain context across sessions, securely in
 ---
 
 ## Features
-1. **Dual Provider Architecture**: Seamlessly switch between local offline simulation (`MockModelProvider`) and cloud intelligence (`NebiusProvider`).
-2. **Robust Tool Registry**: Secure calculator, memory search/save, file readers, CSV inspectors, task managers, and project context tools.
-3. **Prompt Budgeting & History Trimming**: Automatic conversation pruning preserving system prompts while respecting token budgets.
-4. **Zero-Dependency Web UI**: Fast local web server (`demo_ui.py`) accessible at `http://127.0.0.1:8000`.
+1. **Dual Provider Architecture**: Seamlessly switch between local offline simulation (`MockModelProvider`) and cloud intelligence (`NebiusProvider`) powered by NVIDIA Nemotron via Nebius Token Factory.
+2. **Autonomous Error Self-Correction Loop**: Agent reasons through tool calls and automatically catches and self-heals from tool exceptions using corrective feedback observations.
+3. **SQLite FTS5 Full-Text Search**: Fast SQLite FTS5 full-text memory search with BM25 relevance ranking and multi-category indexing.
+4. **Multi-Agent Personas**: Instantly switch agent personas (`@CodeArchitect`, `@DataScientist`, `@DevOpsEngineer`) in the Web UI.
+5. **Realtime Device Telemetry HUD**: Live device resource monitoring displaying CPU utilization, RAM RSS, core temperature, and token throughput.
+6. **System Protocols & Automated Macros**: Built-in automated workflows for Reset Session (`reset_session`), Workspace Audit (`workspace_audit`), and System Diagnostics (`system_diagnostics`).
+7. **Voice Synthesis & Speech Recognition**: Browser-based Text-to-Speech audio feedback and microphone speech input.
+8. **Direct Device File Upload**: Select and upload files directly from local computer/device storage into the workspace.
+9. **Zero-Dependency Web UI**: Fast responsive dashboard (`demo_ui.py`) accessible at `http://127.0.0.1:8000`.
 
 ---
 
@@ -86,7 +90,7 @@ Open in your browser at: **`http://127.0.0.1:8000`**
 - **Verification Script**: `demo_nebius_e2e.py` for comprehensive live verification.
 
 ### Status Note:
-Live API execution is fully implemented and configured in code, but live API testing is currently pending payment card onboarding for Nebius account billing. All local functionality, unit tests, and demos operate fully offline.
+Live API execution, Nemotron inference, and agent tool-calling workflows have been successfully verified through Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`). Full offline fallback (`MockModelProvider`) is also available for zero-config testing and local development.
 
 ---
 
@@ -116,7 +120,7 @@ Live API execution is fully implemented and configured in code, but live API tes
    cp .env.example .env
    ```
 
-4. **Run Offline Test Suite (67 tests passing)**:
+4. **Run Test Suite (143 passing unit tests)**:
    ```bash
    PYTHONPATH=. python -m unittest discover -s tests
    ```
@@ -133,7 +137,7 @@ Live API execution is fully implemented and configured in code, but live API tes
 ```
 jarvis-nexus/
 ├── jarvis_nexus/        # Core Python package (agent, models, memory, tasks, files, context, security)
-├── tests/               # Comprehensive unit & hardening test suite (67 tests)
+├── tests/               # Comprehensive unit & hardening test suite (143 tests)
 ├── docs/                # Architecture, hackathon submission, demo scripts, Devpost copy
 ├── demo_ui.py           # Polished Web UI & dashboard server
 ├── demo_context.py      # Context intelligence demo script
@@ -152,9 +156,9 @@ jarvis-nexus/
 ## Testing
 Run the complete test suite:
 ```bash
-PYTHONPATH=. python -m unittest discover -s tests
+python3 -m pytest tests/
 ```
-*Current baseline: **67 passing tests, 4 skipped**.*
+*Current baseline: **143 passing unit tests**.*
 
 ---
 

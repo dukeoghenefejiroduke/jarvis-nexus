@@ -1,7 +1,14 @@
 services:
   - type: web
-    name: jarvis-nexus-transcend
+    name: jarvis-nexus
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
     startCommand: python demo_ui.py
+    healthCheckPath: /health
+    envVars:
+      - key: APP_VERSION
+        value: "1.0.0"
+      # The deployed commit is reported from Render's built-in RENDER_GIT_COMMIT
+      # (set automatically; do not define it here). APP_COMMIT_SHA is intentionally
+      # not configured on Render: demo_ui.py ignores it when running on Render.

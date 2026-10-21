@@ -2,6 +2,7 @@
 
 import sqlite3
 import os
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 
@@ -10,16 +11,30 @@ class MemoryStore:
 
     def __init__(self, db_path: Optional[str] = None) -> None:
         if db_path is None:
+            db_path = os.environ.get("JARVIS_MEMORY_DB")
+        if db_path is None:
             os.makedirs("data", exist_ok=True)
             db_path = "data/jarvis_memory.db"
         self.db_path = db_path
         self._init_db()
 
-    def _init_db(self) -> None:
-        """Initialize the memories table and handle schema migrations."""
+    @contextmanager
+    def _conn(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
+    def _init_db(self) -> None:
+        """Initialize the memories table and handle schema migrations and FTS5 search."""
+        try:
+            with self._conn() as conn:
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS memories (
@@ -32,19 +47,30 @@ class MemoryStore:
                     )
                     """
                 )
+                # Initialize FTS5 virtual table if supported
+                try:
+                    conn.execute(
+                        """
+                        CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+                            key, value, category, content=memories, content_rowid=id
+                        )
+                        """
+                    )
+                except sqlite3.OperationalError:
+                    pass # FTS5 might not be compiled in rare sqlite builds
+
                 cursor = conn.execute("PRAGMA table_info(memories)")
                 columns = [row["name"] for row in cursor.fetchall()]
                 if "created_at" not in columns:
                     conn.execute("ALTER TABLE memories ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP")
-                conn.commit()
         except Exception as e:
             print(f"Error initializing memory database: {e}")
 
     def save_memory(self, key: str, value: str, category: str = "general") -> bool:
-        """Save or upsert a memory item, preventing duplicates for the same key."""
+        """Save or upsert a memory item, syncing FTS5 index."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.execute(
+            with self._conn() as conn:
+                cursor = conn.execute(
                     """
                     INSERT INTO memories (key, value, category, created_at, updated_at)
                     VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
@@ -55,7 +81,18 @@ class MemoryStore:
                     """,
                     (key, value, category),
                 )
-                conn.commit()
+                row_id = cursor.lastrowid
+                if not row_id:
+                    # fetch id if upsert updated existing
+                    res = conn.execute("SELECT id FROM memories WHERE key = ?", (key,)).fetchone()
+                    if res:
+                        row_id = res["id"]
+                # Sync FTS
+                try:
+                    conn.execute("DELETE FROM memories_fts WHERE rowid = ?", (row_id,))
+                    conn.execute("INSERT INTO memories_fts(rowid, key, value, category) VALUES (?, ?, ?, ?)", (row_id, key, value, category))
+                except Exception:
+                    pass
             return True
         except Exception as e:
             print(f"Error saving memory '{key}': {e}")
@@ -64,8 +101,7 @@ class MemoryStore:
     def get_memory(self, key: str) -> Optional[Dict[str, Any]]:
         """Retrieve a structured memory record by key."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with self._conn() as conn:
                 cursor = conn.execute(
                     "SELECT id, key, value, category, created_at, updated_at FROM memories WHERE key = ?",
                     (key,)
@@ -86,7 +122,7 @@ class MemoryStore:
             new_value = value if value is not None else existing["value"]
             new_category = category if category is not None else existing["category"]
 
-            with sqlite3.connect(self.db_path) as conn:
+            with self._conn() as conn:
                 conn.execute(
                     """
                     UPDATE memories
@@ -95,7 +131,6 @@ class MemoryStore:
                     """,
                     (new_value, new_category, key)
                 )
-                conn.commit()
             return True
         except Exception as e:
             print(f"Error updating memory '{key}': {e}")
@@ -104,42 +139,88 @@ class MemoryStore:
     def delete_memory(self, key: str) -> bool:
         """Delete a memory item by key."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._conn() as conn:
                 cursor = conn.execute("DELETE FROM memories WHERE key = ?", (key,))
-                conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
             print(f"Error deleting memory '{key}': {e}")
             return False
 
     def search_memory(self, query: str, category: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Search memories by key or value matching query substring, optionally filtered by category."""
+        """Search memories using FTS5 full-text search or falling back to LIKE search, handling empty/punctuation queries safely."""
+        if not query or not query.strip() or all(not c.isalnum() for c in query):
+            return self.list_memories(category=category)
+
+        q_clean = "".join(c if c.isalnum() or c.isspace() else " " for c in query).strip()
+        if not q_clean:
+            return self.list_memories(category=category)
+
+        terms = q_clean.split()
+        fts_query = " AND ".join(f'"{t}"' for t in terms) if terms else q_clean
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                like_pattern = f"%{query}%"
-                if category:
-                    cursor = conn.execute(
-                        """
-                        SELECT id, key, value, category, created_at, updated_at
-                        FROM memories
-                        WHERE (key LIKE ? OR value LIKE ?) AND category = ?
-                        ORDER BY updated_at DESC
-                        """,
-                        (like_pattern, like_pattern, category),
-                    )
-                else:
-                    cursor = conn.execute(
-                        """
-                        SELECT id, key, value, category, created_at, updated_at
-                        FROM memories
-                        WHERE key LIKE ? OR value LIKE ?
-                        ORDER BY updated_at DESC
-                        """,
-                        (like_pattern, like_pattern),
-                    )
-                rows = cursor.fetchall()
-                return [dict(row) for row in rows]
+            with self._conn() as conn:
+                # Try FTS5 search first
+                try:
+                    if category:
+                        cursor = conn.execute(
+                            """
+                            SELECT m.id, m.key, m.value, m.category, m.created_at, m.updated_at
+                            FROM memories_fts f
+                            JOIN memories m ON f.rowid = m.id
+                            WHERE memories_fts MATCH ? AND m.category = ?
+                            ORDER BY rank
+                            """,
+                            (fts_query, category),
+                        )
+                    else:
+                        cursor = conn.execute(
+                            """
+                            SELECT m.id, m.key, m.value, m.category, m.created_at, m.updated_at
+                            FROM memories_fts f
+                            JOIN memories m ON f.rowid = m.id
+                            WHERE memories_fts MATCH ?
+                            ORDER BY rank
+                            """,
+                            (fts_query,),
+                        )
+                    rows = cursor.fetchall()
+                    if rows:
+                        return [dict(row) for row in rows]
+                except Exception:
+                    pass # Fall back to LIKE search if FTS5 query fails
+
+                # Fallback LIKE search (searching across terms)
+                results = []
+                seen_ids = set()
+                for term in terms:
+                    like_pattern = f"%{term}%"
+                    if category:
+                        cursor = conn.execute(
+                            """
+                            SELECT id, key, value, category, created_at, updated_at
+                            FROM memories
+                            WHERE (key LIKE ? OR value LIKE ?) AND category = ?
+                            ORDER BY updated_at DESC
+                            """,
+                            (like_pattern, like_pattern, category),
+                        )
+                    else:
+                        cursor = conn.execute(
+                            """
+                            SELECT id, key, value, category, created_at, updated_at
+                            FROM memories
+                            WHERE key LIKE ? OR value LIKE ?
+                            ORDER BY updated_at DESC
+                            """,
+                            (like_pattern, like_pattern),
+                        )
+                    for row in cursor.fetchall():
+                        r_dict = dict(row)
+                        if r_dict["id"] not in seen_ids:
+                            seen_ids.add(r_dict["id"])
+                            results.append(r_dict)
+                return results
         except Exception as e:
             print(f"Error searching memory for '{query}': {e}")
             return []
@@ -147,8 +228,7 @@ class MemoryStore:
     def list_memories(self, category: Optional[str] = None) -> List[Dict[str, Any]]:
         """List all stored memories, optionally filtered by category."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with self._conn() as conn:
                 if category:
                     cursor = conn.execute(
                         "SELECT id, key, value, category, created_at, updated_at FROM memories WHERE category = ? ORDER BY updated_at DESC",

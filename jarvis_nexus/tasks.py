@@ -2,6 +2,7 @@
 
 import sqlite3
 import os
+from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
 
@@ -14,16 +15,30 @@ class TaskStore:
 
     def __init__(self, db_path: Optional[str] = None) -> None:
         if db_path is None:
+            db_path = os.environ.get("JARVIS_TASK_DB")
+        if db_path is None:
             os.makedirs("data", exist_ok=True)
             db_path = "data/jarvis_tasks.db"
         self.db_path = db_path
         self._init_db()
 
+    @contextmanager
+    def _conn(self):
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        try:
+            yield conn
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+        finally:
+            conn.close()
+
     def _init_db(self) -> None:
         """Initialize the tasks table."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with self._conn() as conn:
                 conn.execute(
                     """
                     CREATE TABLE IF NOT EXISTS tasks (
@@ -39,7 +54,6 @@ class TaskStore:
                     )
                     """
                 )
-                conn.commit()
         except Exception as e:
             print(f"Error initializing task database: {e}")
 
@@ -68,7 +82,7 @@ class TaskStore:
             completed_at_val = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._conn() as conn:
                 cursor = conn.execute(
                     """
                     INSERT INTO tasks (title, description, status, priority, due_at, completed_at, created_at, updated_at)
@@ -76,7 +90,6 @@ class TaskStore:
                     """,
                     (title, description, status_lower, priority_lower, due_at, completed_at_val)
                 )
-                conn.commit()
                 return cursor.lastrowid
         except Exception as e:
             print(f"Error creating task: {e}")
@@ -85,8 +98,7 @@ class TaskStore:
     def get_task(self, task_id: int) -> Optional[Dict[str, Any]]:
         """Retrieve a specific task by ID."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with self._conn() as conn:
                 cursor = conn.execute(
                     "SELECT id, title, description, status, priority, created_at, updated_at, due_at, completed_at FROM tasks WHERE id = ?",
                     (task_id,)
@@ -130,7 +142,7 @@ class TaskStore:
             completed_at_val = None
 
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._conn() as conn:
                 conn.execute(
                     """
                     UPDATE tasks
@@ -139,7 +151,6 @@ class TaskStore:
                     """,
                     (new_title, new_desc, new_status, new_priority, new_due, completed_at_val, task_id)
                 )
-                conn.commit()
             return True
         except Exception as e:
             print(f"Error updating task #{task_id}: {e}")
@@ -152,9 +163,8 @@ class TaskStore:
     def delete_task(self, task_id: int) -> bool:
         """Delete a task by ID."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with self._conn() as conn:
                 cursor = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
-                conn.commit()
                 return cursor.rowcount > 0
         except Exception as e:
             print(f"Error deleting task #{task_id}: {e}")
@@ -163,21 +173,32 @@ class TaskStore:
     def list_tasks(self, status: Optional[str] = None, priority: Optional[str] = None) -> List[Dict[str, Any]]:
         """List tasks, optionally filtered by status and/or priority."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
-                query = "SELECT id, title, description, status, priority, created_at, updated_at, due_at, completed_at FROM tasks WHERE 1=1"
-                params = []
+            status_value = status.lower() if status else None
+            priority_value = priority.lower() if priority else None
 
-                if status:
-                    query += " AND status = ?"
-                    params.append(status.lower())
-                if priority:
-                    query += " AND priority = ?"
-                    params.append(priority.lower())
+            with self._conn() as conn:
+                cursor = conn.execute(
+                    """
+                    SELECT id, title, description, status, priority,
+                           created_at, updated_at, due_at, completed_at
+                    FROM tasks
+                    WHERE (? IS NULL OR status = ?)
+                      AND (? IS NULL OR priority = ?)
+                    ORDER BY CASE priority
+                        WHEN 'critical' THEN 1
+                        WHEN 'high' THEN 2
+                        WHEN 'medium' THEN 3
+                        ELSE 4
+                    END, created_at DESC
+                    """,
+                    (
+                        status_value,
+                        status_value,
+                        priority_value,
+                        priority_value,
+                    ),
+                )
 
-                query += " ORDER BY CASE priority WHEN 'critical' THEN 1 WHEN 'high' THEN 2 WHEN 'medium' THEN 3 ELSE 4 END, created_at DESC"
-
-                cursor = conn.execute(query, params)
                 rows = cursor.fetchall()
                 return [dict(row) for row in rows]
         except Exception as e:
@@ -187,8 +208,7 @@ class TaskStore:
     def search_tasks(self, query: str) -> List[Dict[str, Any]]:
         """Search tasks by title or description matching query substring."""
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                conn.row_factory = sqlite3.Row
+            with self._conn() as conn:
                 like_pattern = f"%{query}%"
                 cursor = conn.execute(
                     """

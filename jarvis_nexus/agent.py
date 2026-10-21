@@ -28,11 +28,16 @@ class Agent:
             "You have access to tools for checking time, performing math calculations, and managing persistent local memory."
         )
         self.messages: List[ChatMessage] = []
+        self.last_tools_used: List[str] = []
         self.max_iterations = max_iterations
 
     def set_system_prompt(self, prompt: str) -> None:
         """Update the system prompt."""
         self.system_prompt = prompt
+
+    def get_last_tools_used(self) -> List[str]:
+        """Return list of tool names executed during the most recent chat request."""
+        return self.last_tools_used
 
     def add_message(self, role: str, content: str, tool_calls: Optional[List[Any]] = None, tool_call_id: Optional[str] = None) -> None:
         """Add a structured chat message to conversation history."""
@@ -56,6 +61,7 @@ class Agent:
     def chat(self, user_message: str) -> str:
         """Process a user message through model-driven tool execution loop and return final response."""
         self.add_message("user", user_message)
+        self.last_tools_used = []
         
         tool_defs = self.tool_registry.get_definitions()
         iteration = 0
@@ -86,8 +92,14 @@ class Agent:
                         tool_args = tool_call.arguments
                         tool_id = tool_call.id
 
+                        # Record tool execution for this request
+                        self.last_tools_used.append(tool_name)
+
                         # Execute tool
-                        tool_result = self.tool_registry.execute(tool_name, tool_args)
+                        try:
+                            tool_result = self.tool_registry.execute(tool_name, tool_args)
+                        except Exception as tool_err:
+                            tool_result = {"error": str(tool_err), "correction_hint": "Please adjust arguments and retry with valid parameters."}
                         
                         # Append tool result message
                         self.add_message(

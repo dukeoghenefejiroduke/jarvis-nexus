@@ -18,7 +18,7 @@ class TestProductionHardening(unittest.TestCase):
 
     def test_secret_redaction(self) -> None:
         """Test secret redaction utility hides API keys, bearer tokens, and credentials."""
-        secret_key = "nebius_secret_live_key_987654321abc"
+        secret_key = "mock_placeholder_token_abc123xyz"
         text = f"Error communicating with server using bearer {secret_key} and NEBIUS_API_KEY={secret_key}"
         redacted = redact_secrets(text)
         self.assertNotIn(secret_key, redacted)

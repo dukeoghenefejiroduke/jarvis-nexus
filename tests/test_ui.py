@@ -1,10 +1,30 @@
 """Tests for JARVIS Nexus Demo UI and API endpoints (Milestone 11)."""
 
+import tempfile
+import os
+
+import atexit
+
+_temp_dir = tempfile.TemporaryDirectory()
+atexit.register(_temp_dir.cleanup)
+os.environ["JARVIS_TASK_DB"] = os.path.join(_temp_dir.name, "tasks.db")
+os.environ["JARVIS_MEMORY_DB"] = os.path.join(_temp_dir.name, "memory.db")
+os.environ["JARVIS_WORKSPACE"] = os.path.join(_temp_dir.name, "workspace")
+
 import unittest
 import urllib.request
 import json
 import threading
 from jarvis_nexus.config import Config
+from jarvis_nexus.memory import MemoryStore
+from jarvis_nexus.tasks import TaskStore
+from jarvis_nexus.file_manager import FileManager
+from jarvis_nexus.context import ContextManager
+from jarvis_nexus.tools import ToolRegistry
+from jarvis_nexus.agent import Agent
+from jarvis_nexus.models import MockModelProvider
+from jarvis_nexus.protocols import ProtocolEngine
+import demo_ui
 from demo_ui import run_server
 
 
@@ -13,6 +33,44 @@ class TestDemoUI(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls) -> None:
+        os.environ["JARVIS_TASK_DB"] = os.path.join(_temp_dir.name, "tasks.db")
+        os.environ["JARVIS_MEMORY_DB"] = os.path.join(_temp_dir.name, "memory.db")
+        os.environ["JARVIS_WORKSPACE"] = os.path.join(_temp_dir.name, "workspace")
+        # Re-bind demo_ui global stores to temporary paths to guarantee isolation
+        demo_ui.memory_store = MemoryStore(db_path=os.environ["JARVIS_MEMORY_DB"])
+        demo_ui.task_store = TaskStore(db_path=os.environ["JARVIS_TASK_DB"])
+        demo_ui.file_manager = FileManager(workspace_dir=os.environ["JARVIS_WORKSPACE"])
+        demo_ui.context_manager = ContextManager(
+            memory_store=demo_ui.memory_store,
+            task_store=demo_ui.task_store,
+            file_manager=demo_ui.file_manager,
+            skill_registry=demo_ui.skill_registry
+        )
+        demo_ui.tool_registry = ToolRegistry(
+            memory_store=demo_ui.memory_store,
+            task_store=demo_ui.task_store,
+            context_manager=demo_ui.context_manager
+        )
+        demo_ui.agent = Agent(
+            model_provider=MockModelProvider(),
+            memory_store=demo_ui.memory_store,
+            tool_registry=demo_ui.tool_registry,
+            context_manager=demo_ui.context_manager
+        )
+        demo_ui.protocol_engine = ProtocolEngine(demo_ui.memory_store, demo_ui.task_store, demo_ui.file_manager)
+
+        # Pre-seed sample workspace files expected by tests in temporary workspace
+        os.makedirs(demo_ui.file_manager.workspace_dir, exist_ok=True)
+        try:
+            with open(os.path.join(demo_ui.file_manager.workspace_dir, "notes.md"), "w") as f:
+                f.write("# Test Notes\n- Sample note content.")
+            with open(os.path.join(demo_ui.file_manager.workspace_dir, "sales.csv"), "w") as f:
+                f.write("item,qty,price\nWidget,10,9.99\nGadget,5,19.99")
+            with open(os.path.join(demo_ui.file_manager.workspace_dir, "project.json"), "w") as f:
+                f.write(json.dumps({"name": "Test Project", "status": "active"}, indent=2))
+        except Exception:
+            pass
+
         # Start server on ephemeral port (0) in background thread
         cls.server = run_server(port=0, background=True)
         # Get assigned port
@@ -24,6 +82,38 @@ class TestDemoUI(unittest.TestCase):
         if cls.server:
             cls.server.shutdown()
             cls.server.server_close()
+            if hasattr(cls.server, "_server_thread") and cls.server._server_thread:
+                cls.server._server_thread.join(timeout=2.0)
+        _temp_dir.cleanup()
+        os.environ.pop("JARVIS_TASK_DB", None)
+        os.environ.pop("JARVIS_MEMORY_DB", None)
+        os.environ.pop("JARVIS_WORKSPACE", None)
+        demo_ui.memory_store = MemoryStore()
+        demo_ui.task_store = TaskStore()
+        demo_ui.file_manager = FileManager()
+        demo_ui.context_manager = ContextManager(
+            memory_store=demo_ui.memory_store,
+            task_store=demo_ui.task_store,
+            file_manager=demo_ui.file_manager,
+            skill_registry=demo_ui.skill_registry
+        )
+        demo_ui.tool_registry = ToolRegistry(
+            memory_store=demo_ui.memory_store,
+            task_store=demo_ui.task_store,
+            context_manager=demo_ui.context_manager
+        )
+        demo_ui.agent = Agent(
+            model_provider=MockModelProvider(),
+            memory_store=demo_ui.memory_store,
+            tool_registry=demo_ui.tool_registry,
+            context_manager=demo_ui.context_manager
+        )
+        demo_ui.protocol_engine = ProtocolEngine(demo_ui.memory_store, demo_ui.task_store, demo_ui.file_manager)
+
+    def test_database_isolation(self) -> None:
+        """Verify that UI tests use an isolated temporary database and do not write to production."""
+        self.assertIn(_temp_dir.name, demo_ui.task_store.db_path)
+        self.assertNotIn("data/jarvis_tasks.db", demo_ui.task_store.db_path)
 
     def test_index_page(self) -> None:
         """Test index page loads successfully."""
@@ -220,3 +310,77 @@ class TestDemoUI(unittest.TestCase):
         data = json.loads(resp.read().decode("utf-8"))
         self.assertIn("response", data)
         self.assertTrue(len(data["response"]) > 0)
+
+    def test_api_chat_tool_attribution_non_cumulative(self) -> None:
+        """Verify via actual HTTP /api/chat requests that tool usage is non-cumulative."""
+        # 1. "List my tasks" -> should use 'list_tasks'
+        req1 = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=json.dumps({"message": "List my tasks"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp1 = urllib.request.urlopen(req1)
+        data1 = json.loads(resp1.read().decode("utf-8"))
+        tools1 = [t["tool"] for t in data1.get("tool_activity", [])]
+        self.assertEqual(tools1, ["list_tasks"])
+
+        # 2. "Hello JARVIS, please introduce yourself." -> should use no tools ([])
+        req2 = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=json.dumps({"message": "Hello JARVIS, please introduce yourself."}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp2 = urllib.request.urlopen(req2)
+        data2 = json.loads(resp2.read().decode("utf-8"))
+        tools2 = [t["tool"] for t in data2.get("tool_activity", [])]
+        self.assertEqual(tools2, [])
+        self.assertNotIn("list_tasks", tools2)
+
+        # 3. "What is 27 * 14?" -> should use 'calculator' only
+        req3 = urllib.request.Request(
+            f"{self.base_url}/api/chat",
+            data=json.dumps({"message": "What is 27 * 14?"}).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp3 = urllib.request.urlopen(req3)
+        data3 = json.loads(resp3.read().decode("utf-8"))
+        tools3 = [t["tool"] for t in data3.get("tool_activity", [])]
+        self.assertEqual(tools3, ["calculator"])
+        self.assertNotIn("list_tasks", tools3)
+
+    def test_audit_export_json_and_markdown(self) -> None:
+        """Test audit export endpoints for JSON and Markdown formats returning HTTP 200."""
+        with urllib.request.urlopen(f"{self.base_url}/api/audit/export?format=json") as req_json:
+            self.assertEqual(req_json.status, 200)
+            self.assertIn("application/json", req_json.headers.get("Content-Type", ""))
+            data = json.loads(req_json.read().decode("utf-8"))
+            self.assertIn("events", data)
+
+        with urllib.request.urlopen(f"{self.base_url}/api/audit/export?format=markdown") as req_md:
+            self.assertEqual(req_md.status, 200)
+            self.assertIn("text/markdown", req_md.headers.get("Content-Type", ""))
+            md_text = req_md.read().decode("utf-8")
+            self.assertIn("# JARVIS Nexus Local Audit Trail", md_text)
+
+    def test_audit_export_invalid_format_400(self) -> None:
+        """Test invalid audit export format returns HTTP 400."""
+        import urllib.error
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            with urllib.request.urlopen(f"{self.base_url}/api/audit/export?format=xml") as resp:
+                pass
+        self.assertEqual(ctx.exception.code, 400)
+        ctx.exception.close()
+
+
+def tearDownModule():
+    try:
+        _temp_dir.cleanup()
+    except Exception:
+        pass
+
+
+if __name__ == "__main__":
+    unittest.main()

@@ -17,6 +17,6 @@ Capture the following screenshots for your Devpost and presentation deck:
 6. **`06_project_context.png`**:
    - The Context tab displaying the aggregated project intelligence summary JSON payload.
 7. **`07_test_suite_passing.png`**:
-   - Terminal window showing all 67 unit and hardening tests passing successfully (`Ran 67 tests in ... OK`).
+   - Terminal window showing all 143 unit and hardening tests passing successfully (`Ran 143 tests in ... OK`).
 8. **`08_architecture_diagram.png`**:
    - High-level architecture diagram or ASCII flow from `docs/ARCHITECTURE.md`.

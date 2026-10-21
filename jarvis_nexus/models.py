@@ -82,14 +82,33 @@ class MockModelProvider(BaseModelProvider):
             except Exception:
                 output_data = {"result": tool_output_str}
 
-            # Handle workflow follow-up: if inspect_csv was run in a multi-step workflow request, create task now
+            # Handle workflow follow-up / inspect_csv tool response
             if tool_name == "inspect_csv":
                 if output_data.get("status") == "error":
                     return ModelResponse(content=f"Error inspecting CSV: {output_data.get('message')}", tool_calls=[])
                 fname = output_data.get("filename", "CSV")
                 rows = output_data.get("row_count", 0)
+                cols = output_data.get("column_count", 0)
+                cnames = output_data.get("column_names", [])
                 stats = output_data.get("numeric_statistics", {})
                 user_msgs = [m.content for m in messages if m.role == "user"]
+                last_user_q = user_msgs[-1].lower() if user_msgs else ""
+
+                if any(kw in last_user_q for kw in ["average", "mean", "avg"]):
+                    target_col = None
+                    for col in stats.keys():
+                        if col.lower() in last_user_q:
+                            target_col = col
+                            break
+                    if not target_col and "price" in stats:
+                        target_col = "price"
+                    elif not target_col and stats:
+                        target_col = list(stats.keys())[0]
+
+                    if target_col and target_col in stats:
+                        mean_val = stats[target_col]["mean"]
+                        return ModelResponse(content=f"Based on analysis of '{fname}', the average {target_col} is {mean_val:.2f} (across {stats[target_col]['count']} rows).", tool_calls=[])
+
                 if user_msgs and "save" in user_msgs[-1].lower() and "task" in user_msgs[-1].lower():
                     return ModelResponse(
                         content=None,
@@ -105,7 +124,8 @@ class MockModelProvider(BaseModelProvider):
                             )
                         ]
                     )
-                return ModelResponse(content=f"Inspected CSV '{fname}': {rows} rows.", tool_calls=[])
+                stats_str = ", ".join([f"{col}: mean={s['mean']:.2f}, min={s['min']}, max={s['max']}" for col, s in stats.items()])
+                return ModelResponse(content=f"Inspected CSV '{fname}': {rows} rows, {cols} columns.\nColumns: {cnames}\nNumeric Statistics: {stats_str or 'None'}", tool_calls=[])
 
             # Handle task tool responses
             if tool_name == "create_task":
@@ -189,6 +209,25 @@ class MockModelProvider(BaseModelProvider):
                 cols = output_data.get("column_count", 0)
                 cnames = output_data.get("column_names", [])
                 stats = output_data.get("numeric_statistics", {})
+
+                user_msgs = [m.content for m in messages if m.role == "user"]
+                last_user_q = user_msgs[-1].lower() if user_msgs else ""
+
+                if any(kw in last_user_q for kw in ["average", "mean", "avg"]):
+                    target_col = None
+                    for col in stats.keys():
+                        if col.lower() in last_user_q:
+                            target_col = col
+                            break
+                    if not target_col and "price" in stats:
+                        target_col = "price"
+                    elif not target_col and stats:
+                        target_col = list(stats.keys())[0]
+
+                    if target_col and target_col in stats:
+                        mean_val = stats[target_col]["mean"]
+                        return ModelResponse(content=f"Based on analysis of '{fname}', the average {target_col} is {mean_val:.2f} (across {stats[target_col]['count']} rows).", tool_calls=[])
+
                 stats_str = ", ".join([f"{col}: mean={s['mean']:.2f}, min={s['min']}, max={s['max']}" for col, s in stats.items()])
                 return ModelResponse(content=f"Inspected CSV '{fname}': {rows} rows, {cols} columns.\nColumns: {cnames}\nNumeric Statistics: {stats_str or 'None'}", tool_calls=[])
 
@@ -214,13 +253,16 @@ class MockModelProvider(BaseModelProvider):
                 tasks = output_data.get("pending_tasks", [])
                 files = output_data.get("workspace_files", [])
                 skills = output_data.get("available_skills", [])
-                
+
+                if not mems and not tasks:
+                    return ModelResponse(content="I checked your project context, but I couldn't find any saved memories or pending tasks regarding what you are currently working on. You can tell me what you're working on, and I'll remember it!", tool_calls=[])
+
                 mem_summary = ", ".join([f"'{m.get('key')}': {m.get('value')}" for m in mems]) or "None"
                 task_summary = ", ".join([f"#{t.get('id')} {t.get('title')} ({t.get('priority')} priority)" for t in tasks]) or "None"
                 file_summary = ", ".join([f"{f.get('name')}" for f in files]) or "None"
-                
+
                 return ModelResponse(
-                    content=f"Here is your project context summary:\n- Memories: {mem_summary}\n- Pending Tasks: {task_summary}\n- Workspace Files: {file_summary}\n- Available Skills: {len(skills)} registered.",
+                    content=f"Here is what you are currently working on based on your project context:\n- Memories: {mem_summary}\n- Pending Tasks: {task_summary}\n- Workspace Files: {file_summary}",
                     tool_calls=[]
                 )
 
@@ -266,8 +308,38 @@ class MockModelProvider(BaseModelProvider):
         user_content_lower = user_content.lower()
 
         if tools:
+            # Introduction / greeting check
+            if any(kw in user_content_lower for kw in ["introduce yourself", "who are you", "what are you", "tell me about yourself", "your name", "please introduce yourself"]):
+                return ModelResponse(content="Hello! I am JARVIS Nexus, your advanced modular AI assistant engineered for reliable offline and cloud-accelerated intelligence, built for high-performance developer workflows. I can help you manage persistent memory, track tasks, inspect workspace data, and run system diagnostics.", tool_calls=[])
+
+            # Save memory check (placed before time check so 'date' or time words in reminder sentences trigger save_memory)
+            if "remember" in user_content_lower or "save memory" in user_content_lower:
+                key = "user_note"
+                value = user_content
+                category = "general"
+                if "name" in user_content_lower:
+                    match = re.search(r'(?:name\s+is|=)\s+([a-zA-Z0-9_\s]+)', user_content, re.IGNORECASE)
+                    if match:
+                        key = "user_name"
+                        value = match.group(1).strip()
+                        category = "identity"
+                else:
+                    match = re.search(r'remember\s+(?:that\s+)?(.+?)\s+(?:is|=)\s+(.+)', user_content, re.IGNORECASE)
+                    if match:
+                        key = match.group(1).strip()
+                        value = match.group(2).strip()
+                        category = "project" if any(w in key.lower() for w in ["project", "release", "date", "goal", "target"]) else "general"
+                    else:
+                        match_mem = re.search(r'remember\s+(?:that\s+)?(.+)', user_content, re.IGNORECASE)
+                        if match_mem:
+                            key = "note"
+                            value = match_mem.group(1).strip()
+                for tool in tools:
+                    if tool.name == "save_memory":
+                        return ModelResponse(content=None, tool_calls=[ToolCall(id="call_save_memory_1", name="save_memory", arguments={"key": key, "value": value, "category": category})])
+
             # Context intelligence triggers
-            if any(kw in user_content_lower for kw in ["what am i working on", "what should i work on next", "what do you know about this project", "current priorities", "high priority tasks", "tasks are related to my project"]):
+            if any(kw in user_content_lower for kw in ["what am i working on", "currently working on", "what should i work on next", "what do you know about this project", "current priorities", "high priority tasks", "tasks are related to my project", "my work"]):
                 for tool in tools:
                     if tool.name == "get_project_context":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_proj_ctx_1", name="get_project_context", arguments={"query": user_content})])
@@ -279,18 +351,30 @@ class MockModelProvider(BaseModelProvider):
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_workflow_csv_1", name="inspect_csv", arguments={"filename": "sales.csv"})])
 
             # Task management triggers
-            if "create a task" in user_content_lower or "remind me to" in user_content_lower or "add task" in user_content_lower:
-                match = re.search(r'(?:create a task to|remind me to|add task)\s+(.+)', user_content, re.IGNORECASE)
-                title = match.group(1).strip() if match else user_content
-                priority = "high" if "readme" in title.lower() or "hackathon" in title.lower() else "medium"
+            if any(kw in user_content_lower for kw in ["create a task", "remind me to", "add task", "create"]):
+                match = re.search(r'(?:create a (?:high[- ]priority |urgent |critical |low[- ]priority )?task(?: to| for)?|remind me to|add task|create)\s+(.+)', user_content, re.IGNORECASE)
+                title = match.group(1).strip() if match and match.group(1) else user_content
+                if title.lower().startswith("a task to "):
+                    title = title[10:]
+                elif title.lower().startswith("a high-priority task to "):
+                    title = title[24:]
+
+                priority = "medium"
+                if any(p in user_content_lower for p in ["high-priority", "high priority", "urgent", "critical"]):
+                    priority = "high"
+                elif any(p in user_content_lower for p in ["low priority", "low-priority", "low"]):
+                    priority = "low"
+
                 for tool in tools:
                     if tool.name == "create_task":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_create_task_1", name="create_task", arguments={"title": title, "priority": priority})])
 
-            if any(kw in user_content_lower for kw in ["what tasks", "pending tasks", "do i have tasks", "list tasks"]):
+            if any(kw in user_content_lower for kw in ["list my tasks", "list tasks", "show my tasks", "what are my tasks", "show pending tasks", "what tasks", "pending tasks", "do i have tasks"]):
+                status_arg = "pending" if any(k in user_content_lower for k in ["pending", "what tasks", "do i have tasks"]) else None
                 for tool in tools:
                     if tool.name == "list_tasks":
-                        return ModelResponse(content=None, tool_calls=[ToolCall(id="call_list_tasks_1", name="list_tasks", arguments={"status": "pending"})])
+                        args = {"status": status_arg} if status_arg else {}
+                        return ModelResponse(content=None, tool_calls=[ToolCall(id="call_list_tasks_1", name="list_tasks", arguments=args)])
 
             if "high-priority tasks" in user_content_lower or "high priority tasks" in user_content_lower:
                 for tool in tools:
@@ -316,9 +400,10 @@ class MockModelProvider(BaseModelProvider):
                     if tool.name == "list_files":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_list_files_1", name="list_files", arguments={})])
 
-            if "what's inside" in user_content_lower or "inspect" in user_content_lower or "contents of" in user_content_lower or "analyze" in user_content_lower:
-                if "sales.csv" in user_content_lower or ".csv" in user_content_lower:
-                    fname = "sales.csv" if "sales.csv" in user_content_lower else "data.csv"
+            if "what's inside" in user_content_lower or "inspect" in user_content_lower or "contents of" in user_content_lower or "analyze" in user_content_lower or ".csv" in user_content_lower:
+                match_csv = re.search(r'([\w\-\.]+\.csv)', user_content, re.IGNORECASE)
+                if match_csv or "sales.csv" in user_content_lower or ".csv" in user_content_lower:
+                    fname = match_csv.group(1).strip() if match_csv else ("sales.csv" if "sales.csv" in user_content_lower else "data.csv")
                     for tool in tools:
                         if tool.name == "inspect_csv":
                             return ModelResponse(content=None, tool_calls=[ToolCall(id="call_inspect_csv_1", name="inspect_csv", arguments={"filename": fname})])
@@ -370,26 +455,6 @@ class MockModelProvider(BaseModelProvider):
                 for tool in tools:
                     if tool.name == "calculator":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_calc_1", name="calculator", arguments={"expression": expr})])
-
-            # Save memory check
-            if "remember" in user_content_lower or "save memory" in user_content_lower:
-                if "name" in user_content_lower:
-                    match = re.search(r'(?:name\s+is|=)\s+([a-zA-Z0-9_\s]+)', user_content, re.IGNORECASE)
-                    name_val = match.group(1).strip() if match else "Duke"
-                    key = "user_name"
-                    value = name_val
-                    category = "identity"
-                else:
-                    match = re.search(r'remember\s+(?:that\s+)?(.+?)\s+(?:is|=)\s+(.+)', user_content, re.IGNORECASE)
-                    if match:
-                        key = match.group(1).strip()
-                        value = match.group(2).strip()
-                        category = "general"
-                    else:
-                        key = "user_note"
-                        value = user_content
-                        category = "general"
-                for tool in tools:
                     if tool.name == "save_memory":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_mem_save_1", name="save_memory", arguments={"key": key, "value": value, "category": category})])
 
@@ -407,9 +472,11 @@ class MockModelProvider(BaseModelProvider):
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_mem_get_1", name="get_memory", arguments={"key": key})])
 
             # Search memory check
-            if "search memory" in user_content_lower or "recall" in user_content_lower or "what do you remember" in user_content_lower:
-                query_match = re.search(r'(?:search memory|recall|what do you remember about)\s+(.+)', user_content, re.IGNORECASE)
-                query = query_match.group(1).strip() if query_match else user_content
+            if any(kw in user_content_lower for kw in ["search memory", "recall", "what do you remember", "what is my", "what are my", "favorite", "tell me about"]):
+                query_match = re.search(r'(?:search memory|recall|what do you remember about|what is my|what are my|tell me about)\s+(.+)', user_content, re.IGNORECASE)
+                query = query_match.group(1).strip() if query_match and query_match.group(1) else user_content
+                if query.endswith("?"):
+                    query = query[:-1].strip()
                 for tool in tools:
                     if tool.name == "search_memory":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_mem_search_1", name="search_memory", arguments={"query": query})])
