@@ -1039,7 +1039,7 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
         if path == "/health":
             payload = {
                 "status": "healthy",
-                "service": "jarvis-nexus-amazon",
+                "service": "jarvis-nexus-nebius",
             }
             payload.update(get_deployment_info())
             self._send_json(payload)
@@ -1058,7 +1058,7 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
         elif path == "/api/status":
             payload = {
                 "status": "online",
-                "service": "jarvis-nexus-amazon",
+                "service": "jarvis-nexus-nebius",
                 "provider": Config.MODEL_PROVIDER,
                 "memories": len(memory_store.list_memories()),
                 "tasks": len(task_store.list_tasks()),

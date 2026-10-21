@@ -29,11 +29,11 @@ _spec.loader.exec_module(vd)
 
 SHA_A = "a" * 40
 SHA_B = "b" * 40
-BASE = "https://jarvis-nexus-amazon.onrender.com"
+BASE = "https://jarvis-nexus-nebius.onrender.com"
 
 
 def _health(sha=SHA_A, version="1.0.0", status="healthy"):
-    return {"status": status, "service": "jarvis-nexus-amazon", "version": version, "commit_sha": sha}
+    return {"status": status, "service": "jarvis-nexus-nebius", "version": version, "commit_sha": sha}
 
 
 def _runtime(sha=SHA_A, version="1.0.0", status="online"):
@@ -233,7 +233,7 @@ class TestVerifierAgainstRealServer(unittest.TestCase):
         self.assertEqual(self._verify(SHA_A, RENDER="true", APP_COMMIT_SHA=SHA_A, APP_VERSION="1.0.0"), 1)
 
 
-HOST = "jarvis-nexus-amazon.onrender.com"
+HOST = "jarvis-nexus-nebius.onrender.com"
 
 
 class TestUrlAllowlist(unittest.TestCase):

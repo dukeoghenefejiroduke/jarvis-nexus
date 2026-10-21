@@ -19,7 +19,7 @@ Failure classes:
 
 SSRF protection (CWE-918):
 
-* The target is restricted to ``https://jarvis-nexus-transcend.onrender.com`` on
+* The target is restricted to ``https://jarvis-nexus-nebius.onrender.com`` on
   port 443. URLs are parsed and compared component by component (never by string
   prefix). Other schemes (``file://``, ``http://``), other hosts (including
   ``localhost``, loopback, private and link-local addresses), non-default ports,
@@ -33,7 +33,7 @@ Exit codes: 0 verified, 1 verification failed, 2 invalid configuration.
 Configuration (environment variables, overridable by CLI flags):
 
 * ``CI_COMMIT_SHA``      required, the commit that must be deployed
-* ``MONITOR_BASE_URL``   default https://jarvis-nexus-transcend.onrender.com
+* ``MONITOR_BASE_URL``   default https://jarvis-nexus-nebius.onrender.com
 * ``EXPECTED_VERSION``   default 1.0.0
 """
 
@@ -48,7 +48,7 @@ import urllib.parse
 from typing import Any, Callable, Dict, List, Mapping, Optional, Tuple
 
 ALLOWED_SCHEME = "https"
-ALLOWED_HOST = "jarvis-nexus-amazon.onrender.com"
+ALLOWED_HOST = "jarvis-nexus-nebius.onrender.com"
 ALLOWED_PORT = 443
 DEFAULT_BASE_URL = f"{ALLOWED_SCHEME}://{ALLOWED_HOST}"
 DEFAULT_EXPECTED_VERSION = "1.0.0"

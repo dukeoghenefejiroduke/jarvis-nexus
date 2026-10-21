@@ -139,7 +139,7 @@ class TestEndpointsReportSameIdentity(unittest.TestCase):
             health = self._get("/health")
             status = self._get("/api/status")
         self.assertEqual(health["status"], "healthy")
-        self.assertEqual(health["service"], "jarvis-nexus-amazon")
+        self.assertEqual(health["service"], "jarvis-nexus-nebius")
         for key in ("status", "provider", "memories", "tasks", "files", "version", "commit_sha"):
             self.assertIn(key, status)
         self.assertEqual(status["status"], "online")

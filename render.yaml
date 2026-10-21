@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: jarvis-nexus
+    name: jarvis-nexus-nebius
     runtime: python
     plan: free
     buildCommand: pip install -r requirements.txt
