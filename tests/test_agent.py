@@ -164,6 +164,15 @@ class TestModelDrivenAgent(unittest.TestCase):
         self.assertEqual(tools_3, ["calculator"])
         self.assertNotIn("list_tasks", tools_3)
 
+    def test_persona_system_prompts_include_tool_instructions(self) -> None:
+        from jarvis_nexus.agent import get_persona_prompt
+        for persona in ["default", "codearchitect", "datascientist", "devopsengineer"]:
+            prompt = get_persona_prompt(persona)
+            self.assertIn("calculator", prompt)
+            self.assertIn("inspect_csv", prompt)
+            self.assertIn("create_task", prompt)
+            self.assertIn("list_skills", prompt)
+
 
 if __name__ == "__main__":
     unittest.main()

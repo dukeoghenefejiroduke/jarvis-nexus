@@ -97,6 +97,45 @@ class TestSystemProtocolsAndTelemetry(unittest.TestCase):
         res = self.protocols.execute_protocol("unknown_protocol")
         self.assertEqual(res["status"], "error")
 
+    def test_analyze_project_protocol(self) -> None:
+        self.files.write_file("architecture_spec.json", "{}")
+        self.tasks.create_task(title="Deploy Hackathon Submission", priority="high", status="pending")
+        self.memory.save_memory("hackathon", "Nebius x NVIDIA", category="project")
+
+        res = self.protocols.execute_protocol("analyze_project")
+        self.assertEqual(res["status"], "success")
+        self.assertIn("analysis", res)
+        self.assertEqual(res["analysis"]["observed_facts"]["workspace_file_count"], 1)
+        self.assertEqual(res["analysis"]["observed_facts"]["pending_task_count"], 1)
+        self.assertIn("recommendation", res["analysis"]["inferences"])
+        self.assertIn("unknowns", res["analysis"])
+        # When pending tasks exist, proposed_task should be None to prevent duplicates
+        self.assertIsNone(res["analysis"]["proposed_task"])
+
+    def test_analyze_project_empty_workspace_and_no_auto_task_creation(self) -> None:
+        initial_task_count = len(self.tasks.list_tasks())
+        res = self.protocols.execute_protocol("analyze_project")
+        self.assertEqual(res["status"], "success")
+        self.assertEqual(res["analysis"]["observed_facts"]["workspace_file_count"], 0)
+        self.assertEqual(res["analysis"]["observed_facts"]["pending_task_count"], 0)
+        # Verify analysis did NOT automatically create any task
+        final_task_count = len(self.tasks.list_tasks())
+        self.assertEqual(initial_task_count, final_task_count)
+
+        # Verify explicit user approval workflow successfully creates the proposed task
+        proposed = res["analysis"]["proposed_task"]
+        self.assertIsNotNone(proposed)
+        new_id = self.tasks.create_task(title=proposed["title"], description=proposed["description"], priority=proposed["priority"])
+        self.assertGreater(new_id, 0)
+        self.assertEqual(len(self.tasks.list_tasks()), initial_task_count + 1)
+
+    def test_analyze_project_with_readme_inspection(self) -> None:
+        self.files.write_file("README.md", "# JARVIS Nexus Test README Content")
+        res = self.protocols.execute_protocol("analyze_project")
+        self.assertEqual(res["status"], "success")
+        inspected = res["analysis"]["observed_facts"]["inspected_documents"]
+        self.assertTrue(any(d["filename"] == "README.md" for d in inspected))
+
     def test_telemetry_manager(self) -> None:
         tel = self.telemetry.get_telemetry()
         self.assertIn("cpu_percent", tel)

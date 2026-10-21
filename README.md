@@ -59,6 +59,21 @@ Developers need AI assistants that maintain context across sessions, securely in
 
 ---
 
+## Main Differentiator: "Analyze My Project"
+JARVIS Nexus turns scattered project information into **evidence-backed next actions**:
+1. **Context Aggregation**: Automatically gathers available files, pending tasks, and saved memories.
+2. **Evidence Separation**: Clearly distinguishes **observed facts** (file counts, task statuses) from **inferences** (recommended next steps) and **unknowns** (uninspected dependencies or external network latency).
+3. **Actionable Task Creation**: Allows users to instantly approve and create high-priority tasks derived directly from evidence.
+
+---
+
+## Known Limitations & Honest Disclosures
+- **Persistence on Cloud PaaS**: Deployed environments (e.g., Render) may use ephemeral file systems unless persistent storage disks are attached; SQLite databases and workspace files will reset on restart.
+- **Model vs. Offline Fallback**: Live tool calling and reasoning depend on Nebius Token Factory connectivity and NVIDIA Nemotron API availability; when offline, JARVIS Nexus transparently falls back to `MockModelProvider`.
+- **Speech Recognition**: Browser-based TTS and speech recognition capabilities depend on browser support (Web Speech API).
+
+---
+
 ## Security
 - **Secret Redaction**: Sanitizes API keys, Bearer tokens, and credentials from all exception traces and logs (`[REDACTED]`).
 - **Workspace Containment**: Strict path sanitization (`_sanitize_path`) blocking path traversal (`../`) and absolute paths outside `data/workspace`.

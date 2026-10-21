@@ -21,7 +21,7 @@ from jarvis_nexus.skills.registry import SkillRegistry
 from jarvis_nexus.skills.builtin import register_builtin_skills
 from jarvis_nexus.context import ContextManager
 from jarvis_nexus.tools import ToolRegistry
-from jarvis_nexus.agent import Agent
+from jarvis_nexus.agent import Agent, get_persona_prompt
 from jarvis_nexus.models import get_model_provider
 from jarvis_nexus.security import redact_secrets, safe_exception_message
 from jarvis_nexus.protocols import ProtocolEngine
@@ -348,6 +348,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <p style="font-size:0.85rem; color:var(--text-secondary); margin-bottom:12px;">Explore a simulated Alexa+-style assistant experience powered by JARVIS Nexus. The Morning Briefing summarizes live local tasks, saved memories, and workspace documents. This is an independent simulation, not a connection to an Alexa+ service.</p>
             <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:15px;">
                 <button id="morningBriefingBtn" class="btn" onclick="executeProtocol('morning_briefing')">☀️ Run Alexa+ Morning Briefing</button>
+                <button class="btn" onclick="executeProtocol('analyze_project')" style="background: var(--success); color: white;">🔍 Analyze My Project</button>
                 <button class="btn btn-secondary" onclick="executeProtocol('reset_session')">🧹 Reset Session</button>
                 <button class="btn" onclick="executeProtocol('workspace_audit')">🎉 Workspace Audit</button>
                 <button class="btn btn-secondary" onclick="executeProtocol('system_diagnostics')">🔍 System Diagnostics</button>
@@ -568,6 +569,27 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             document.getElementById('taskTitle').value = '';
             document.getElementById('taskDesc').value = '';
             loadTasks();
+            showToast('Task created successfully');
+        }
+
+        async function approveProposedTask(title, description, priority) {
+            try {
+                const res = await fetch('/api/tasks', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({title, description, priority, status: 'pending'})
+                });
+                const data = await res.json();
+                if (data.task_id !== undefined) {
+                    showToast('Successfully created approved task #' + data.task_id);
+                    loadTasks();
+                    switchTab('tasks');
+                } else {
+                    alert('Failed to create task: ' + (data.error || 'Unknown error'));
+                }
+            } catch (err) {
+                alert('Error approving task: ' + err.message);
+            }
         }
 
         async function completeTask(id) {
@@ -781,6 +803,45 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 });
                 const data = await res.json();
                 if (pre) pre.textContent = JSON.stringify(data, null, 2);
+
+                if (data.analysis) {
+                    let html = `=== EVIDENCE-BACKED PROJECT ANALYSIS ===\n`;
+                    html += `Recommendation: ${data.analysis.inferences.recommendation}\n`;
+                    html += `Confidence: ${data.analysis.inferences.confidence}\n\n`;
+                    html += `--- Observed Facts ---\n`;
+                    html += `• Files (${data.analysis.observed_facts.workspace_file_count}): ${data.analysis.observed_facts.files.map(f => f.name + ' (' + f.size_bytes + 'B)').join(', ')}\n`;
+                    html += `• Pending Tasks (${data.analysis.observed_facts.pending_task_count}): ${data.analysis.observed_facts.pending_tasks.map(t => '#' + t.id + ' ' + t.title + ' [' + t.priority + ']').join(', ')}\n`;
+                    html += `• Saved Memories: ${data.analysis.observed_facts.saved_memory_count}\n`;
+                    if (data.analysis.observed_facts.inspected_documents && data.analysis.observed_facts.inspected_documents.length > 0) {
+                        html += `• Inspected Documents: ${data.analysis.observed_facts.inspected_documents.map(d => d.filename).join(', ')}\n`;
+                    }
+                    html += `\n--- Unknowns & Limitations ---\n`;
+                    data.analysis.unknowns.forEach(u => html += `• ${u}\n`);
+
+                    if (data.analysis.proposed_task) {
+                        html += `\n--- Proposed Task (Pending User Approval) ---\n`;
+                        html += `Title: ${data.analysis.proposed_task.title}\n`;
+                        html += `Priority: ${data.analysis.proposed_task.priority}\n`;
+                    }
+                    if (pre) pre.textContent = html;
+
+                    let btnContainer = document.getElementById('approvalBtnContainer');
+                    if (!btnContainer) {
+                        btnContainer = document.createElement('div');
+                        btnContainer.id = 'approvalBtnContainer';
+                        btnContainer.style.marginTop = '12px';
+                        pre.parentNode.insertBefore(btnContainer, pre.nextSibling);
+                    }
+                    const pt = data.analysis.proposed_task;
+                    if (pt) {
+                        btnContainer.innerHTML = `<button class="btn" style="background:var(--success); color:white; padding:10px 16px; font-weight:600;" onclick="approveProposedTask('${escapeHtml(pt.title).replace(/'/g, "\\'")}', '${escapeHtml(pt.description || '').replace(/'/g, "\\'")}', '${pt.priority || 'medium'}')">🚀 Approve & Create Task</button>`;
+                    } else {
+                        btnContainer.innerHTML = `<p style="font-size:0.85rem; color:var(--text-secondary); margin-top:8px;">ℹ️ No new task proposed (existing pending tasks already cover current priorities).</p>`;
+                    }
+                } else {
+                    const btnContainer = document.getElementById('approvalBtnContainer');
+                    if (btnContainer) btnContainer.innerHTML = '';
+                }
 
                 if (proto.toLowerCase().includes('briefing') && data.briefing) {
                     const card = document.getElementById('morningBriefingCard');
@@ -1145,15 +1206,8 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             msg = data.get("message", "")
             persona = data.get("persona", "default")
 
-            # Configure persona system prompt
-            if persona == "codearchitect":
-                agent.set_system_prompt("You are JARVIS Nexus @CodeArchitect, an expert software architecture and code review AI assistant powered by NVIDIA Nemotron.")
-            elif persona == "datascientist":
-                agent.set_system_prompt("You are JARVIS Nexus @DataScientist, an expert data analysis and CSV statistical intelligence assistant powered by NVIDIA Nemotron.")
-            elif persona == "devopsengineer":
-                agent.set_system_prompt("You are JARVIS Nexus @DevOpsEngineer, an expert deployment, security hardening, and task automation assistant powered by NVIDIA Nemotron.")
-            else:
-                agent.set_system_prompt("You are JARVIS Nexus, an advanced AI assistant built for the Nebius x NVIDIA Global AI Hackathon 2026.")
+            # Configure persona system prompt with comprehensive tool instructions
+            agent.set_system_prompt(get_persona_prompt(persona))
 
             print("\n================ CHAT SESSION START ================")
             print(f"[Persona]: {persona}")
@@ -1193,10 +1247,18 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self._send_json({"success": success})
 
         elif path == "/api/tasks":
-            title = data.get("title", "")
+            title = data.get("title", "").strip()
             description = data.get("description", "")
             priority = data.get("priority", "medium")
             status = data.get("status", "pending")
+            if not title:
+                self._send_json({"error": "Task title is required."})
+                return
+            existing = task_store.list_tasks(status="pending") + task_store.list_tasks(status="in_progress")
+            if any(t.get("title", "").strip().lower() == title.lower() for t in existing):
+                self._send_json({"error": f"A task with title '{title}' already exists (duplicate prevention)."})
+                return
+
             task_id = task_store.create_task(title=str(title), description=str(description), priority=str(priority), status=str(status))
             self._send_json({"task_id": task_id})
 

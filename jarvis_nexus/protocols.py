@@ -119,9 +119,85 @@ class ProtocolEngine:
             except Exception as e:
                 return {"protocol": "Morning Briefing", "status": "error", "message": str(e)}
 
+        elif name in ["analyze_project", "project_analysis"]:
+            try:
+                files = self.file_manager.list_files()
+                pending_tasks = self.task_store.list_tasks(status="pending")
+                mems = self.memory_store.list_memories()
+
+                # Safely inspect key document content if README.md is present
+                inspected_docs = []
+                for f in files:
+                    fname = f.get("name", "")
+                    if fname.lower() in ["readme.md", "architecture.md", "requirements.txt"]:
+                        try:
+                            read_res = self.file_manager.read_file(fname)
+                            if isinstance(read_res, dict) and read_res.get("status") == "success":
+                                content = read_res.get("content", "")
+                                if content:
+                                    inspected_docs.append({"filename": fname, "snippet": content[:300] + ("..." if len(content) > 300 else "")})
+                        except Exception:
+                            pass
+
+                file_details = [{"name": f.get("name"), "size_bytes": f.get("size_bytes")} for f in files[:10]]
+                task_details = [{"id": t.get("id"), "title": t.get("title"), "priority": t.get("priority"), "status": t.get("status")} for t in pending_tasks[:5]]
+
+                recommendation = "Review workspace documentation and maintain an active task queue."
+                proposed_task = None
+
+                if pending_tasks:
+                    top_task = pending_tasks[0]
+                    recommendation = f"Complete pending task #{top_task.get('id')}: '{top_task.get('title')}' (Priority: {top_task.get('priority')})."
+                    # Do not propose creating a duplicate task when pending tasks already cover the work
+                    proposed_task = None
+                elif files:
+                    recommendation = f"Inspect key workspace file '{files[0].get('name')}' to initialize project task planning."
+                    proposed_task = {
+                        "title": f"Audit and inspect workspace file: {files[0].get('name')}",
+                        "description": "Evidence-backed proposal to review key workspace documentation.",
+                        "priority": "medium"
+                    }
+                else:
+                    recommendation = "Create initial project workspace files and define task backlog."
+                    proposed_task = {
+                        "title": "Initialize project documentation and task backlog",
+                        "description": "Establish initial project files and tracking.",
+                        "priority": "medium"
+                    }
+
+                self.memory_store.save_memory("last_protocol", "Analyze My Project executed", category="system")
+
+                return {
+                    "protocol": "Analyze My Project (Evidence-Backed)",
+                    "status": "success",
+                    "analysis": {
+                        "observed_facts": {
+                            "workspace_file_count": len(files),
+                            "pending_task_count": len(pending_tasks),
+                            "saved_memory_count": len(mems),
+                            "files": file_details,
+                            "pending_tasks": task_details,
+                            "inspected_documents": inspected_docs
+                        },
+                        "inferences": {
+                            "recommendation": recommendation,
+                            "confidence": "High (derived directly from local workspace files, task store, and read document snippets)"
+                        },
+                        "unknowns": [
+                            "Real-time external API latency and cloud token limits",
+                            "Unsaved browser-local edits or external repository commits",
+                            "Runtime execution performance on target hardware"
+                        ],
+                        "proposed_task": proposed_task
+                    },
+                    "message": f"Project analysis complete. Observed {len(files)} file(s), {len(pending_tasks)} pending task(s), and {len(mems)} memory item(s). Recommendation: {recommendation}"
+                }
+            except Exception as e:
+                return {"protocol": "Analyze My Project", "status": "error", "message": str(e)}
+
         else:
             return {
                 "protocol": protocol_name,
                 "status": "error",
-                "message": f"Unknown protocol '{protocol_name}'. Available: reset_session, workspace_audit, system_diagnostics, morning_briefing."
+                "message": f"Unknown protocol '{protocol_name}'. Available: reset_session, workspace_audit, system_diagnostics, morning_briefing, analyze_project."
             }
