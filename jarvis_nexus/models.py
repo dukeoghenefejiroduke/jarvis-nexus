@@ -38,6 +38,7 @@ class ModelResponse:
     """Structured response from a model provider."""
     content: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = field(default_factory=list)
+    provider_mode: str = "Active (Mock Simulation)"
 
 
 class BaseModelProvider(ABC):

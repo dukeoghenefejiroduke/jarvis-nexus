@@ -192,7 +192,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             <span>💾 RAM: <b id="hudMem">45 MB</b></span>
             <span>⚡ Speed: <b id="hudSpeed">84.6 t/s</b></span>
         </div>
-        <div class="badge">Nebius + Nemotron</div>
+        <div class="badge" id="providerBadge">Nebius + Nemotron</div>
     </header>
 
     <nav>
@@ -785,6 +785,34 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         }
         setInterval(loadTelemetry, 5000);
 
+        async function loadStatus() {
+            try {
+                const res = await fetch('/api/status');
+                const data = await res.json();
+                const badge = document.getElementById('providerBadge');
+                if (badge && data.provider_mode) {
+                    badge.textContent = data.provider_mode;
+                    if (data.provider_mode.includes('Active') && data.provider_mode.includes('Nebius')) {
+                        badge.style.background = 'rgba(34, 197, 94, 0.1)';
+                        badge.style.color = 'var(--success)';
+                        badge.style.borderColor = 'var(--success)';
+                    } else if (data.provider_mode.includes('Fallback')) {
+                        badge.style.background = 'rgba(234, 179, 8, 0.1)';
+                        badge.style.color = '#eab308';
+                        badge.style.borderColor = '#eab308';
+                    } else {
+                        badge.style.background = 'rgba(56, 189, 248, 0.1)';
+                        badge.style.color = 'var(--accent)';
+                        badge.style.borderColor = 'var(--accent)';
+                    }
+                }
+            } catch (err) {
+                console.error('Status fetch error:', err);
+            }
+        }
+        setInterval(loadStatus, 5000);
+        window.addEventListener('DOMContentLoaded', loadStatus);
+
         let isExecutingProtocol = false;
         async function executeProtocol(proto) {
             if (isExecutingProtocol) return;
@@ -1117,10 +1145,20 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
 
         elif path == "/api/status":
+            provider_mode = "Active (Mock Simulation)"
+            if Config.MODEL_PROVIDER == "nebius":
+                if Config.NEBIUS_API_KEY and Config.NEBIUS_API_KEY not in ("your_api_key_here", "your_actual_nebius_api_key_here"):
+                    provider_mode = "Active (Nebius Token Factory / NVIDIA Nemotron)"
+                else:
+                    provider_mode = "Offline Fallback (Mock Simulation - Missing API Key)"
+            else:
+                provider_mode = "Active (Mock Simulation)"
+
             payload = {
                 "status": "online",
                 "service": "jarvis-nexus-nebius",
                 "provider": Config.MODEL_PROVIDER,
+                "provider_mode": provider_mode,
                 "memories": len(memory_store.list_memories()),
                 "tasks": len(task_store.list_tasks()),
                 "files": len(file_manager.list_files()),
@@ -1227,9 +1265,19 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
 
             audit_manager.record_event("chat", str(msg), {"persona": persona, "tools_used": [t['tool'] for t in tool_activity]}, status="success")
 
+            provider_mode = "Active (Mock Simulation)"
+            if Config.MODEL_PROVIDER == "nebius":
+                if Config.NEBIUS_API_KEY and Config.NEBIUS_API_KEY not in ("your_api_key_here", "your_actual_nebius_api_key_here"):
+                    provider_mode = "Active (Nebius Token Factory / NVIDIA Nemotron)"
+                else:
+                    provider_mode = "Offline Fallback (Mock Simulation - Missing API Key)"
+            else:
+                provider_mode = "Active (Mock Simulation)"
+
             self._send_json({
                 "response": response_text,
-                "tool_activity": tool_activity
+                "tool_activity": tool_activity,
+                "provider_mode": provider_mode
             })
 
         elif path == "/api/protocols":

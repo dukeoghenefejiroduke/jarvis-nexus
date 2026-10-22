@@ -39,9 +39,11 @@ class NebiusProvider(BaseModelProvider):
     ) -> ModelResponse:
         """Send chat completion request to Nebius Token Factory via urllib and return structured ModelResponse with transparent fallback."""
         if not self.api_key or self.api_key in ("your_api_key_here", "your_actual_nebius_api_key_here"):
-            print("[Notice] NEBIUS_API_KEY is missing or set to placeholder. Transparently falling back to MockModelProvider.")
+            print("[Notice] NEBIUS_API_KEY is missing or set to placeholder. Transparently falling back to Offline Fallback mode.")
             from jarvis_nexus.models import MockModelProvider
-            return MockModelProvider().generate(messages, system_prompt, tools)
+            res = MockModelProvider().generate(messages, system_prompt, tools)
+            res.provider_mode = "Offline Fallback (Mock Simulation - Missing API Key)"
+            return res
 
         base = self.base_url.rstrip("/")
         url = f"{base}/chat/completions"
@@ -124,9 +126,11 @@ class NebiusProvider(BaseModelProvider):
                         )
                     )
 
-            return ModelResponse(content=content, tool_calls=tool_calls)
+            return ModelResponse(content=content, tool_calls=tool_calls, provider_mode="Active (Nebius Token Factory / NVIDIA Nemotron)")
 
         except (urllib.error.HTTPError, urllib.error.URLError, Exception) as e:
-            print(f"[Notice] Nebius Token Factory connection failed or timed out ({e}). Transparently falling back to MockModelProvider.")
+            print(f"[Notice] Nebius Token Factory connection failed or timed out ({e}). Transparently falling back to Offline Fallback mode.")
             from jarvis_nexus.models import MockModelProvider
-            return MockModelProvider().generate(messages, system_prompt, tools)
+            res = MockModelProvider().generate(messages, system_prompt, tools)
+            res.provider_mode = f"Offline Fallback (Mock Simulation - {str(e)[:40]})"
+            return res
