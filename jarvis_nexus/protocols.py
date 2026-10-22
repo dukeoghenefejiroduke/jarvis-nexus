@@ -144,11 +144,11 @@ class ProtocolEngine:
 
                 recommendation = "Review workspace documentation and maintain an active task queue."
                 proposed_task = None
+                confidence = "High (derived directly from local workspace files, task store, and read document snippets)"
 
                 if pending_tasks:
                     top_task = pending_tasks[0]
                     recommendation = f"Complete pending task #{top_task.get('id')}: '{top_task.get('title')}' (Priority: {top_task.get('priority')})."
-                    # Do not propose creating a duplicate task when pending tasks already cover the work
                     proposed_task = None
                 elif files:
                     recommendation = f"Inspect key workspace file '{files[0].get('name')}' to initialize project task planning."
@@ -165,10 +165,32 @@ class ProtocolEngine:
                         "priority": "medium"
                     }
 
+                # Use AI model provider (NVIDIA Nemotron / Nebius Token Factory) if active to synthesize deeper recommendation
+                try:
+                    from jarvis_nexus.models import get_model_provider, ChatMessage
+                    provider = get_model_provider()
+                    ai_prompt = (
+                        f"Analyze this project based on actual workspace facts:\n"
+                        f"- File Count: {len(files)}, Files: {file_details}\n"
+                        f"- Pending Tasks Count: {len(pending_tasks)}, Tasks: {task_details}\n"
+                        f"- Inspected Docs: {inspected_docs}\n"
+                        f"Provide an expert project recommendation."
+                    )
+                    ai_res = provider.generate([ChatMessage(role="user", content=ai_prompt)], system_prompt="You are JARVIS Nexus AI Project Intelligence Analyzer powered by NVIDIA Nemotron.")
+                    if ai_res and ai_res.content and len(ai_res.content.strip()) > 10:
+                        recommendation = ai_res.content.strip()
+                        confidence = f"High (AI-synthesized via {getattr(ai_res, 'provider_mode', 'Active Model Provider')} and grounded in empirical workspace evidence)"
+                except Exception:
+                    pass
+
+                # Ensure proposed_task remains None when pending tasks exist to prevent duplicate task creation
+                if pending_tasks:
+                    proposed_task = None
+
                 self.memory_store.save_memory("last_protocol", "Analyze My Project executed", category="system")
 
                 return {
-                    "protocol": "Analyze My Project (Evidence-Backed)",
+                    "protocol": "Analyze My Project (Evidence-Backed AI)",
                     "status": "success",
                     "analysis": {
                         "observed_facts": {
@@ -181,7 +203,7 @@ class ProtocolEngine:
                         },
                         "inferences": {
                             "recommendation": recommendation,
-                            "confidence": "High (derived directly from local workspace files, task store, and read document snippets)"
+                            "confidence": confidence
                         },
                         "unknowns": [
                             "Real-time external API latency and cloud token limits",

@@ -4,6 +4,7 @@ import datetime
 import math
 import ast
 import operator
+import re
 from typing import Any, Callable, Dict, List, Optional
 from jarvis_nexus.memory import MemoryStore
 from jarvis_nexus.tasks import TaskStore
@@ -113,6 +114,12 @@ class ToolRegistry:
 
             try:
                 expr_cleaned = expression.strip()
+                expr_cleaned = re.sub(r'^(?:calculate|compute|what is)\s+', '', expr_cleaned, flags=re.IGNORECASE)
+                match = re.search(r'([\d\.\+\-\*\/\(\)\s]+)', expr_cleaned)
+                if match:
+                    expr_cleaned = match.group(1).strip()
+                expr_cleaned = expr_cleaned.rstrip('.')
+
                 parsed_ast = ast.parse(expr_cleaned, mode='eval')
                 result = _eval_node(parsed_ast)
                 return {"expression": expression, "result": result}

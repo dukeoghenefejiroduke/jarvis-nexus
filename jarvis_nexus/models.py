@@ -7,6 +7,48 @@ import json
 import re
 
 
+def format_csv_tabular_report(output_data: Dict[str, Any]) -> str:
+    """Format CSV inspection output into clean Markdown tables."""
+    fname = output_data.get("filename", "CSV")
+    rows = output_data.get("row_count", 0)
+    cols = output_data.get("column_count", 0)
+    cnames = output_data.get("column_names", [])
+    stats = output_data.get("numeric_statistics", {})
+    samples = output_data.get("sample_rows", [])
+
+    table_lines = [f"### 📊 CSV Analysis Report: `{fname}`\n"]
+    
+    # Metadata table
+    table_lines.append("| Metric | Value |")
+    table_lines.append("|--------|-------|")
+    table_lines.append(f"| **Row Count** | {rows} |")
+    table_lines.append(f"| **Column Count** | {cols} |")
+    table_lines.append(f"| **Column Names** | `{', '.join(cnames)}` |")
+    table_lines.append("")
+
+    # Numeric Statistics table (if any)
+    if stats:
+        table_lines.append("#### 📈 Numeric Statistics")
+        table_lines.append("| Column | Min | Max | Mean | Count |")
+        table_lines.append("|--------|-----|-----|------|-------|")
+        for col, s in stats.items():
+            table_lines.append(f"| `{col}` | {s['min']} | {s['max']} | {s['mean']:.2f} | {s['count']} |")
+        table_lines.append("")
+
+    # Sample rows table (if any)
+    if cnames and samples:
+        table_lines.append("#### 📋 Sample Rows")
+        header_str = " | ".join([f"`{c}`" for c in cnames])
+        sep_str = " | ".join(["---"] * len(cnames))
+        table_lines.append(f"| {header_str} |")
+        table_lines.append(f"| {sep_str} |")
+        for row in samples:
+            row_vals = [row[i] if i < len(row) else "" for i in range(len(cnames))]
+            table_lines.append(f"| " + " | ".join(row_vals) + " |")
+
+    return "\n".join(table_lines)
+
+
 @dataclass
 class ChatMessage:
     """Structured chat message across conversation roles."""
@@ -125,8 +167,7 @@ class MockModelProvider(BaseModelProvider):
                             )
                         ]
                     )
-                stats_str = ", ".join([f"{col}: mean={s['mean']:.2f}, min={s['min']}, max={s['max']}" for col, s in stats.items()])
-                return ModelResponse(content=f"Inspected CSV '{fname}': {rows} rows, {cols} columns.\nColumns: {cnames}\nNumeric Statistics: {stats_str or 'None'}", tool_calls=[])
+                return ModelResponse(content=format_csv_tabular_report(output_data), tool_calls=[])
 
             # Handle task tool responses
             if tool_name == "create_task":
@@ -229,8 +270,7 @@ class MockModelProvider(BaseModelProvider):
                         mean_val = stats[target_col]["mean"]
                         return ModelResponse(content=f"Based on analysis of '{fname}', the average {target_col} is {mean_val:.2f} (across {stats[target_col]['count']} rows).", tool_calls=[])
 
-                stats_str = ", ".join([f"{col}: mean={s['mean']:.2f}, min={s['min']}, max={s['max']}" for col, s in stats.items()])
-                return ModelResponse(content=f"Inspected CSV '{fname}': {rows} rows, {cols} columns.\nColumns: {cnames}\nNumeric Statistics: {stats_str or 'None'}", tool_calls=[])
+                return ModelResponse(content=format_csv_tabular_report(output_data), tool_calls=[])
 
             elif tool_name == "inspect_json":
                 if output_data.get("status") == "error":
@@ -452,7 +492,9 @@ class MockModelProvider(BaseModelProvider):
             # Calculator check
             calc_match = re.search(r'(?:calculate|compute|what is)\s+([\d\.\+\-\*\/\(\)\s]+)', user_content_lower)
             if calc_match or (any(op in user_content for op in ['+', '-', '*', '/']) and any(ch.isdigit() for ch in user_content)):
-                expr = calc_match.group(1).strip() if calc_match else user_content
+                raw_expr = calc_match.group(1).strip() if calc_match else user_content
+                match_expr = re.search(r'([\d\.\+\-\*\/\(\)\s]+)', raw_expr)
+                expr = match_expr.group(1).strip().rstrip('.') if match_expr else raw_expr.strip().rstrip('.')
                 for tool in tools:
                     if tool.name == "calculator":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_calc_1", name="calculator", arguments={"expression": expr})])

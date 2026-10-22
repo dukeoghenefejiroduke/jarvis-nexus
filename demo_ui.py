@@ -465,7 +465,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                         html += `<div class="tool-activity">🔧 Using tool: <b>${escapeHtml(act.tool)}</b></div>`;
                     });
                 }
-                html += `${escapeHtml(data.response || 'No response')}</div>`;
+                html += `${renderMarkdown(data.response || 'No response')}</div>`;
                 messagesDiv.innerHTML += html;
                 messagesDiv.scrollTop = messagesDiv.scrollHeight;
                 speakText(data.response || 'No response');
@@ -862,7 +862,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                     }
                     const pt = data.analysis.proposed_task;
                     if (pt) {
-                        btnContainer.innerHTML = `<button class="btn" style="background:var(--success); color:white; padding:10px 16px; font-weight:600;" onclick="approveProposedTask('${escapeHtml(pt.title).replace(/'/g, "\\'")}', '${escapeHtml(pt.description || '').replace(/'/g, "\\'")}', '${pt.priority || 'medium'}')">🚀 Approve & Create Task</button>`;
+                        btnContainer.innerHTML = `<button class="btn" style="background:var(--success); color:white; padding:10px 16px; font-weight:600;" onclick="approveProposedTask('${escapeJsString(pt.title)}', '${escapeJsString(pt.description || '')}', '${escapeJsString(pt.priority || 'medium')}')">🚀 Approve & Create Task</button>`;
                     } else {
                         btnContainer.innerHTML = `<p style="font-size:0.85rem; color:var(--text-secondary); margin-top:8px;">ℹ️ No new task proposed (existing pending tasks already cover current priorities).</p>`;
                     }
@@ -1006,6 +1006,90 @@ HTML_TEMPLATE = """<!DOCTYPE html>
             }
         }
 
+        function renderMarkdown(text) {
+            if (!text) return '';
+            let lines = String(text).split('\\n');
+            let htmlLines = [];
+            let inTable = false;
+            let tableRows = [];
+
+            for (let i = 0; i < lines.length; i++) {
+                let line = lines[i].trim();
+
+                if (line.startsWith('|') && line.endsWith('|')) {
+                    if (!inTable) {
+                        inTable = true;
+                        tableRows = [];
+                    }
+                    tableRows.push(line);
+                    continue;
+                } else {
+                    if (inTable) {
+                        htmlLines.push(renderTable(tableRows));
+                        inTable = false;
+                        tableRows = [];
+                    }
+                }
+
+                if (line.startsWith('### ')) {
+                    htmlLines.push(`<h3>${escapeHtml(line.substring(4))}</h3>`);
+                    continue;
+                }
+                if (line.startsWith('#### ')) {
+                    htmlLines.push(`<h4>${escapeHtml(line.substring(5))}</h4>`);
+                    continue;
+                }
+
+                let formatted = escapeHtml(line)
+                    .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
+                    .replace(/`([^`]+)`/g, '<code>$1</code>');
+
+                if (formatted === '') {
+                    htmlLines.push('<br>');
+                } else {
+                    htmlLines.push(`<div>${formatted}</div>`);
+                }
+            }
+
+            if (inTable) {
+                htmlLines.push(renderTable(tableRows));
+            }
+
+            return htmlLines.join('\\n');
+        }
+
+        function renderTable(rows) {
+            if (rows.length === 0) return '';
+            let html = '<div style="overflow-x:auto; margin: 8px 0;"><table style="width:100%; border-collapse: collapse; font-size: 0.85rem;">';
+            let headerProcessed = false;
+
+            for (let r = 0; r < rows.length; r++) {
+                let row = rows[r];
+                if (row.match(/^\\|\\s*[\\-\\:]+[\\s\\-\\:]*\\|/)) {
+                    headerProcessed = true;
+                    continue;
+                }
+
+                let cells = row.split('|').slice(1, -1).map(c => c.trim());
+                let tag = (!headerProcessed && r === 0) ? 'th' : 'td';
+                
+                html += '<tr style="border-bottom: 1px solid var(--border);">';
+                for (let c = 0; c < cells.length; c++) {
+                    let cellContent = escapeHtml(cells[c])
+                        .replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>')
+                        .replace(/`([^`]+)`/g, '<code>$1</code>');
+                    let style = tag === 'th' ? 'padding: 6px 10px; background: rgba(255,255,255,0.05); text-align: left; font-weight: 600;' : 'padding: 6px 10px;';
+                    html += `<${tag} style="${style}">${cellContent}</${tag}>`;
+                }
+                html += '</tr>';
+                if (!headerProcessed && r === 0) {
+                    headerProcessed = true;
+                }
+            }
+            html += '</table></div>';
+            return html;
+        }
+
         function escapeHtml(str) {
             if (str === null || str === undefined) return '';
             return String(str)
@@ -1053,6 +1137,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         window.saveMemory = saveMemory;
         window.deleteMemory = deleteMemory;
         window.loadTasks = loadTasks;
+        window.approveProposedTask = approveProposedTask;
         window.createTask = createTask;
         window.completeTask = completeTask;
         window.deleteTask = deleteTask;

@@ -28,6 +28,10 @@ class TestToolRegistry(unittest.TestCase):
         result = self.registry.execute("calculator", {"expression": "2 + 3 * 4"})
         self.assertEqual(result["result"], 14)
 
+    def test_calculator_with_trailing_text(self) -> None:
+        result = self.registry.execute("calculator", {"expression": "1482*79+543. Show results"})
+        self.assertEqual(result["result"], 117621)
+
     def test_calculator_invalid_syntax(self) -> None:
         result = self.registry.execute("calculator", {"expression": "import os; os.system('ls')"})
         self.assertIn("error", result)

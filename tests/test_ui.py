@@ -132,6 +132,7 @@ class TestDemoUI(unittest.TestCase):
         self.assertIn('.replace(/\\\\/g, "\\\\\\\\")', html)
         self.assertIn("deleteMemory('${escapeJsString(m.key)}')", html)
         self.assertIn("viewFile('${escapeJsString(f.name)}')", html)
+        self.assertIn("approveProposedTask('${escapeJsString(pt.title)}'", demo_ui.HTML_TEMPLATE)
 
     def test_api_status(self) -> None:
         """Test /api/status endpoint."""
@@ -373,6 +374,15 @@ class TestDemoUI(unittest.TestCase):
                 pass
         self.assertEqual(ctx.exception.code, 400)
         ctx.exception.close()
+
+    def test_ui_markdown_table_rendering(self) -> None:
+        """Test that the served UI includes client-side Markdown table renderer."""
+        with urllib.request.urlopen(self.base_url) as resp:
+            self.assertEqual(resp.status, 200)
+            html = resp.read().decode("utf-8")
+            self.assertIn("function renderMarkdown", html)
+            self.assertIn("function renderTable", html)
+            self.assertIn("renderMarkdown(data.response", html)
 
 
 def tearDownModule():
