@@ -4,8 +4,19 @@ import os
 from jarvis_nexus.security import redact_secrets
 
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    from dotenv import load_dotenv, find_dotenv
+    env_path = find_dotenv(usecwd=True)
+    if not env_path:
+        example_path = os.path.join(os.getcwd(), ".env.example")
+        if os.path.exists(example_path):
+            try:
+                with open(example_path, "r") as f_ex, open(".env", "w") as f_env:
+                    f_env.write(f_ex.read())
+                load_dotenv(".env")
+            except Exception:
+                pass
+    else:
+        load_dotenv(env_path)
 except ImportError:
     pass
 

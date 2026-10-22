@@ -37,12 +37,11 @@ class NebiusProvider(BaseModelProvider):
         system_prompt: str,
         tools: Optional[List[ToolDefinition]] = None
     ) -> ModelResponse:
-        """Send chat completion request to Nebius Token Factory via urllib and return structured ModelResponse."""
-        if not self.api_key:
-            return ModelResponse(
-                content="Configuration Error: NEBIUS_API_KEY is missing. Please set NEBIUS_API_KEY in your environment or .env file.",
-                tool_calls=[]
-            )
+        """Send chat completion request to Nebius Token Factory via urllib and return structured ModelResponse with transparent fallback."""
+        if not self.api_key or self.api_key in ("your_api_key_here", "your_actual_nebius_api_key_here"):
+            print("[Notice] NEBIUS_API_KEY is missing or set to placeholder. Transparently falling back to MockModelProvider.")
+            from jarvis_nexus.models import MockModelProvider
+            return MockModelProvider().generate(messages, system_prompt, tools)
 
         base = self.base_url.rstrip("/")
         url = f"{base}/chat/completions"
@@ -96,7 +95,7 @@ class NebiusProvider(BaseModelProvider):
             req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
 
-            with urllib.request.urlopen(req, timeout=30) as resp:
+            with urllib.request.urlopen(req, timeout=10) as resp:
                 resp_bytes = resp.read()
                 data = json.loads(resp_bytes.decode("utf-8"))
 
@@ -127,20 +126,7 @@ class NebiusProvider(BaseModelProvider):
 
             return ModelResponse(content=content, tool_calls=tool_calls)
 
-        except urllib.error.HTTPError as e:
-            err_body = ""
-            try:
-                err_body = e.read().decode("utf-8")
-            except Exception:
-                pass
-            msg = f"Nebius API HTTP Error {e.code}: {e.reason}"
-            if err_body:
-                msg += f" - {err_body}"
-            return ModelResponse(content=self._sanitize(msg), tool_calls=[])
-        except urllib.error.URLError as e:
-            reason = str(e.reason) if hasattr(e, "reason") else str(e)
-            if "timed out" in reason.lower() or isinstance(e.reason, TimeoutError) if hasattr(e, "reason") else False:
-                return ModelResponse(content="Error: Request to Nebius Token Factory timed out.", tool_calls=[])
-            return ModelResponse(content=self._sanitize(f"Error: Failed to connect to Nebius Token Factory network endpoint: {reason}"), tool_calls=[])
-        except Exception as e:
-            return ModelResponse(content=self._sanitize(f"Unexpected Error communicating with Nebius: {str(e)}"), tool_calls=[])
+        except (urllib.error.HTTPError, urllib.error.URLError, Exception) as e:
+            print(f"[Notice] Nebius Token Factory connection failed or timed out ({e}). Transparently falling back to MockModelProvider.")
+            from jarvis_nexus.models import MockModelProvider
+            return MockModelProvider().generate(messages, system_prompt, tools)
