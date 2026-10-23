@@ -1,7 +1,6 @@
-# JARVIS Nexus — Post-Code Lifecycle
+# JARVIS Nexus — Agent Lifecycle
 
-This document defines the target automation lifecycle for the GitLab
-Transcend Hackathon.
+This document defines the agent task execution lifecycle.
 
 | Stage | JARVIS Nexus responsibility |
 |---|---|
@@ -15,9 +14,9 @@ Transcend Hackathon.
 | MONITOR | Validate runtime health and collect operational evidence |
 | GOVERN | Record decisions, failures, evidence, and final lifecycle status |
 
-## Target operating mode
+## Target Operating Mode
 
-The target is the Hands-off level:
+The target is automated execution:
 
 Intent
 → planning
@@ -29,17 +28,3 @@ Intent
 → configuration
 → monitoring
 → governance
-
-Human intervention should not be required between individual stages
-when the automation can safely complete the operation.
-
-Safety gates must still stop the workflow when a high-risk or
-unrecoverable condition is detected.
-
-## Hackathon implementation boundary
-
-The original JARVIS Nexus project remains the foundation.
-
-All GitLab Duo automation, lifecycle orchestration, CI/CD integration,
-deployment automation, monitoring automation, and governance evidence
-added for this competition are new work on the `transcend-2026` branch.

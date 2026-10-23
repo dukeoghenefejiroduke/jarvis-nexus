@@ -1,6 +1,6 @@
-# JARVIS Nexus — Final Screenshot Plan
+# JARVIS Nexus — Screenshot Plan
 
-This document defines the screenshot plan for hackathon submission documentation, README badges, and Devpost presentation.
+This document defines the screenshot plan for documentation, README badges, and presentation decks.
 
 ---
 
@@ -9,7 +9,7 @@ This document defines the screenshot plan for hackathon submission documentation
 ### 1. Main JARVIS Chat Interface
 - **Screen to Show:** Web UI main chat view (`http://127.0.0.1:8000`).
 - **Action to Perform:** Send greeting and receive welcome message from JARVIS.
-- **Visible Information:** Clean mobile-friendly chat UI, user bubble, JARVIS assistant bubble, active model status (`MockModelProvider` / `nebius`).
+- **Visible Information:** Clean mobile-friendly chat UI, user bubble, JARVIS assistant bubble, active model status (`MockModelProvider` / `nebius` / `gemini`).
 - **What NOT to Show:** No API keys, passwords, or personal account details.
 
 ### 2. Tool Execution (Calculator / Code)
@@ -32,7 +32,7 @@ This document defines the screenshot plan for hackathon submission documentation
 
 ### 5. Task Management
 - **Screen to Show:** Task tracker view or chat task creation response.
-- **Action to Perform:** Create a high-priority task ("Prepare hackathon slide deck").
+- **Action to Perform:** Create a high-priority task ("Prepare release slide deck").
 - **Visible Information:** Task ID, title, status (`pending`), and priority (`high`).
 - **What NOT to Show:** Completed internal test tasks.
 
@@ -60,8 +60,8 @@ This document defines the screenshot plan for hackathon submission documentation
 - **Visible Information:** Organized Python modules and documentation.
 - **What NOT to Show:** `.env` files, `.git/` internal objects, or SQLite cache files.
 
-### 10. Live Nebius / NVIDIA Nemotron (Conditional)
-- **Screen to Show:** Configuration and test output when `MODEL_PROVIDER=nebius` is configured with a verified key.
-- **Action to Perform:** Run `demo_nebius_e2e.py` (showing mock fallback or live response if verified).
-- **Visible Information:** Nebius Token Factory endpoint URL and NVIDIA Nemotron model header.
-- **What NOT to Show:** **NEVER show actual API keys (`sk-...` or `nebius-...`) in screenshots.** Crop or blur credential fields if config is displayed.
+### 10. Live Cloud Provider (Conditional)
+- **Screen to Show:** Configuration and test output when cloud providers are configured with verified keys.
+- **Action to Perform:** Run verification scripts.
+- **Visible Information:** Endpoint URL and model headers.
+- **What NOT to Show:** **NEVER show actual API keys in screenshots.** Crop or blur credential fields if config is displayed.

@@ -1,8 +1,6 @@
-# JARVIS Nexus — Screenshot Checklist for Submission
+# JARVIS Nexus — Screenshot Checklist
 
-> **Event:** Nebius x NVIDIA Global AI Hackathon 2026
-
-Capture the following screenshots for your Devpost and presentation deck:
+Capture the following screenshots for documentation and presentation decks:
 
 1. **`01_chat_interface.png`**:
    - The main Web UI dashboard (`http://127.0.0.1:8000`) showing the Chat tab, greeting message, and tool activity badge (`🔧 Using tool: calculator`).
@@ -17,6 +15,6 @@ Capture the following screenshots for your Devpost and presentation deck:
 6. **`06_project_context.png`**:
    - The Context tab displaying the aggregated project intelligence summary JSON payload.
 7. **`07_test_suite_passing.png`**:
-   - Terminal window showing all 67 unit and hardening tests passing successfully (`Ran 67 tests in ... OK`).
+   - Terminal window showing unit and hardening tests passing successfully (`OK`).
 8. **`08_architecture_diagram.png`**:
    - High-level architecture diagram or ASCII flow from `docs/ARCHITECTURE.md`.

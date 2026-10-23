@@ -1,7 +1,5 @@
 # JARVIS Nexus — System Architecture & Design
 
-> **Event:** Nebius x NVIDIA Global AI Hackathon 2026
-
 ## 1. System Overview
 
 JARVIS Nexus is an advanced, modular AI assistant framework engineered for reliable local execution and high-performance cloud intelligence. It combines a model-driven agent reasoning loop with structured SQLite persistent memory, a secure workspace file manager, task and workflow automation, modular skill discovery, advanced context management, production-grade security hardening, and a responsive mobile-friendly Web UI.
@@ -24,23 +22,22 @@ JARVIS Nexus is an advanced, modular AI assistant framework engineered for relia
                       ▼
                [Model Provider]
                 ├── MockModelProvider (Offline / Testing)
-                └── NebiusProvider (Cloud / OpenAI-Compatible)
-                      │
-                      ▼
-        [Nebius Token Factory API] ──► [NVIDIA Nemotron]
+                ├── NebiusProvider (Cloud / OpenAI-Compatible)
+                └── GeminiProvider (Google Gemini API Fallback)
 ```
 
 ---
 
 ## 3. Core Architectural Modules
 
-### 3.1 Model Provider Abstraction (`models.py`, `nebius_provider.py`)
+### 3.1 Model Provider Abstraction (`models.py`, `nebius_provider.py`, `gemini_provider.py`)
 - Defines `BaseModelProvider`, structured `ChatMessage`, `ToolCall`, and `ModelResponse`.
 - **`MockModelProvider`**: Provides robust, rule-based offline simulation of chat, calculations, tool requests, memory management, CSV/JSON analysis, and project context queries without external network dependency or billing.
-- **`NebiusProvider`**: OpenAI-compatible adapter pointing to Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`) running NVIDIA Nemotron (`nvidia/Nemotron-3_5-Lightning`).
+- **`NebiusProvider`**: OpenAI-compatible adapter pointing to Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`).
+- **`GeminiProvider`**: OpenAI-compatible adapter pointing to Google Gemini API (`https://generativelanguage.googleapis.com/v1beta/openai/`).
 
 ### 3.2 Agent Core & Reasoning Loop (`agent.py`)
-- Coordinates multi-step tool execution loops up to a configurable maximum iteration count (default: 5).
+- Coordinates multi-step tool execution loops up to a configurable maximum iteration count (default: 10).
 - Automatically manages conversation history, integrates context prompts, detects model tool requests, executes tools securely via `ToolRegistry`, feeds results back to the model, and returns natural-language responses.
 
 ### 3.3 Tool Registry & Execution Engine (`tools.py`, `task_tools.py`, `file_tools.py`, `context_tools.py`, `skill_tools.py`)

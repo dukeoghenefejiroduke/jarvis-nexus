@@ -7,6 +7,36 @@ from jarvis_nexus.memory import MemoryStore
 from jarvis_nexus.tools import ToolRegistry
 
 
+DEFAULT_TOOL_INSTRUCTIONS = (
+    " You have access to executable tools for calculations, persistent memory, file inspection, "
+    "CSV and JSON analysis, task management, skill discovery, and project context. "
+    "IMPORTANT TOOL RULES: When a request requires a calculation, call the calculator tool. "
+    "When asked to inspect a CSV file, call inspect_csv. When asked to inspect a JSON file, "
+    "call inspect_json. When asked to create a task, call create_task. When asked to list tasks, "
+    "call list_tasks. When asked what skills are available, call list_skills. "
+    "Use the exact tool names provided in the available tool definitions; never invent tool names "
+    "or claim a tool is unavailable without trying the supplied tool. Use tool results as the source "
+    "of truth. For requests about remembered information, use memory tools rather than guessing. "
+    "After tools return results, explain the findings clearly and accurately. When presenting CSV or "
+    "dataset inspection results, ALWAYS format them as clean, structured Markdown tables (tabular form) "
+    "for metrics, column statistics, and sample rows rather than bullet points or prose paragraphs. "
+    "Never claim an action succeeded unless the tool result confirms success."
+)
+
+
+def get_persona_prompt(persona: str) -> str:
+    """Return comprehensive system prompt including identity and tool rules for given persona."""
+    base = "You are JARVIS Nexus, an advanced modular AI assistant."
+    p_lower = (persona or "default").lower()
+    if "codearchitect" in p_lower:
+        base = "You are JARVIS Nexus @CodeArchitect, an expert software architecture and code review AI assistant."
+    elif "datascientist" in p_lower:
+        base = "You are JARVIS Nexus @DataScientist, an expert data analysis and CSV statistical intelligence assistant."
+    elif "devopsengineer" in p_lower:
+        base = "You are JARVIS Nexus @DevOpsEngineer, an expert deployment, security hardening, and task automation assistant."
+    return base + DEFAULT_TOOL_INSTRUCTIONS
+
+
 class Agent:
     """Model-driven JARVIS Nexus AI Agent coordinating conversation, memory, and tools."""
 
@@ -16,23 +46,25 @@ class Agent:
         memory_store: Optional[MemoryStore] = None,
         tool_registry: Optional[ToolRegistry] = None,
         system_prompt: Optional[str] = None,
-        max_iterations: int = 5,
+        max_iterations: int = 10,
         context_manager: Optional[Any] = None
     ) -> None:
         self.model_provider = model_provider or get_model_provider()
         self.memory_store = memory_store or MemoryStore()
         self.tool_registry = tool_registry or ToolRegistry(memory_store=self.memory_store, context_manager=context_manager)
         
-        self.system_prompt = system_prompt or (
-            "You are JARVIS Nexus, an advanced AI assistant built for the Nebius x NVIDIA Global AI Hackathon 2026. "
-            "You have access to tools for checking time, performing math calculations, and managing persistent local memory."
-        )
+        self.system_prompt = system_prompt or get_persona_prompt("default")
         self.messages: List[ChatMessage] = []
+        self.last_tools_used: List[str] = []
         self.max_iterations = max_iterations
 
     def set_system_prompt(self, prompt: str) -> None:
         """Update the system prompt."""
         self.system_prompt = prompt
+
+    def get_last_tools_used(self) -> List[str]:
+        """Return list of tool names executed during the most recent chat request."""
+        return self.last_tools_used
 
     def add_message(self, role: str, content: str, tool_calls: Optional[List[Any]] = None, tool_call_id: Optional[str] = None) -> None:
         """Add a structured chat message to conversation history."""
@@ -56,6 +88,7 @@ class Agent:
     def chat(self, user_message: str) -> str:
         """Process a user message through model-driven tool execution loop and return final response."""
         self.add_message("user", user_message)
+        self.last_tools_used = []
         
         tool_defs = self.tool_registry.get_definitions()
         iteration = 0
@@ -86,8 +119,14 @@ class Agent:
                         tool_args = tool_call.arguments
                         tool_id = tool_call.id
 
+                        # Record tool execution for this request
+                        self.last_tools_used.append(tool_name)
+
                         # Execute tool
-                        tool_result = self.tool_registry.execute(tool_name, tool_args)
+                        try:
+                            tool_result = self.tool_registry.execute(tool_name, tool_args)
+                        except Exception as tool_err:
+                            tool_result = {"error": str(tool_err), "correction_hint": "Please adjust arguments and retry with valid parameters."}
                         
                         # Append tool result message
                         self.add_message(

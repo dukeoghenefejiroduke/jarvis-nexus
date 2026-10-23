@@ -38,6 +38,7 @@ class ModelResponse:
     """Structured response from a model provider."""
     content: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = field(default_factory=list)
+    provider_mode: str = "Active (Mock Simulation)"
 
 
 class BaseModelProvider(ABC):
@@ -435,5 +436,8 @@ def get_model_provider(provider_name: Optional[str] = None) -> BaseModelProvider
     if name == "nebius":
         from jarvis_nexus.nebius_provider import NebiusProvider
         return NebiusProvider()
+    elif name == "gemini":
+        from jarvis_nexus.gemini_provider import GeminiProvider
+        return GeminiProvider()
     else:
         return MockModelProvider()

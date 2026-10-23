@@ -1,6 +1,6 @@
-# JARVIS Nexus — Final Demo Runbook
+# JARVIS Nexus — Demo Runbook
 
-This runbook outlines the exact sequence, timing, narration, and screen presentation for the 3-minute JARVIS Nexus demo.
+This runbook outlines the exact sequence, timing, narration, and screen presentation for demonstrating JARVIS Nexus.
 
 ---
 
@@ -8,8 +8,8 @@ This runbook outlines the exact sequence, timing, narration, and screen presenta
 
 ### 0:00 – 0:15 | Introduction
 - **Action:** Open terminal, launch Web UI with `PYTHONPATH=. python demo_ui.py`, and open browser at `http://127.0.0.1:8000`.
-- **What to Say:** "Meet JARVIS Nexus: an offline-first, mobile-friendly AI agent and workspace intelligence hub powered by local mock models and ready for enterprise deployment with Nebius Token Factory and NVIDIA Nemotron."
-- **What Appears on Screen:** Terminal starting FastAPI/Streamlit/gradio or custom Web UI server; browser displaying clean, responsive JARVIS chat interface.
+- **What to Say:** "Meet JARVIS Nexus: an offline-first, mobile-friendly AI agent and workspace intelligence hub powered by local mock models and ready for enterprise deployment with Nebius and Google Gemini."
+- **What Appears on Screen:** Terminal starting Web UI server; browser displaying clean, responsive JARVIS chat interface.
 
 ### 0:15 – 0:35 | JARVIS Conversation
 - **Action:** Type in chat: *"Hello JARVIS, who are you and what can you do?"*
@@ -32,7 +32,7 @@ This runbook outlines the exact sequence, timing, narration, and screen presenta
 - **What Appears on Screen:** File contents preview and summarized analysis of the CSV dataset.
 
 ### 1:45 – 2:05 | Task Creation
-- **Action:** Type: *"Create a task: Prepare hackathon slide deck and assign priority high."*
+- **Action:** Type: *"Create a task: Prepare release slide deck and assign priority high."*
 - **What to Say:** "JARVIS includes a built-in task manager to track deliverables, statuses, and priorities."
 - **What Appears on Screen:** Task created success message with ID, title, and priority badge.
 
@@ -46,10 +46,10 @@ This runbook outlines the exact sequence, timing, narration, and screen presenta
 - **What to Say:** "JARVIS supports extensible skills and sandboxed workspaces ensuring secure local operations."
 - **What Appears on Screen:** List of registered skills (calculator, file reader, memory, tasks) and secure workspace folder overview.
 
-### 2:40 – 3:00 | Architecture & Nebius / NVIDIA Explanation
+### 2:40 – 3:00 | Architecture & Cloud Integration
 - **Action:** Briefly switch to documentation (`docs/ARCHITECTURE.md`) or architecture view.
-- **What to Say:** "Built with modular Python architecture, JARVIS runs entirely offline using Mock models for development, and is fully configured for Nebius Token Factory and NVIDIA Nemotron lightning-fast inference for production. Thank you!"
-- **What Appears on Screen:** Architecture summary showing Model Provider abstraction (`MockModelProvider` / `NebiusProvider`), security hardening, and storage layers.
+- **What to Say:** "Built with modular Python architecture, JARVIS runs entirely offline using Mock models for development, and is fully configured for Nebius and Google Gemini lightning-fast inference for production. Thank you!"
+- **What Appears on Screen:** Architecture summary showing Model Provider abstraction (`MockModelProvider` / `NebiusProvider` / `GeminiProvider`), security hardening, and storage layers.
 
 ---
 

@@ -82,7 +82,8 @@ class TestDemoUI(unittest.TestCase):
 
     def test_api_tasks(self) -> None:
         """Test task creation and listing via API endpoints."""
-        payload = json.dumps({"title": "UI Test Task", "priority": "high", "status": "pending"}).encode("utf-8")
+        import time
+        payload = json.dumps({"title": f"UI Test Task {time.time()}", "priority": "high", "status": "pending"}).encode("utf-8")
         req = urllib.request.Request(
             f"{self.base_url}/api/tasks",
             data=payload,
