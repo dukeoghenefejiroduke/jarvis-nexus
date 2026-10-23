@@ -137,28 +137,44 @@ class MockModelProvider(BaseModelProvider):
                 status_f = output_data.get("status_filter")
                 prio_f = output_data.get("priority_filter")
                 if tasks:
-                    task_lines = [f"{i+1}. {t.get('title')} — {t.get('priority')} priority [{t.get('status')}]" for i, t in enumerate(tasks)]
                     prefix = f"You have {len(tasks)} matching tasks:"
                     if status_f:
                         prefix = f"You have {len(tasks)} {status_f} tasks:"
                     elif prio_f:
                         prefix = f"Here are your {prio_f}-priority tasks:"
-                    return ModelResponse(content=f"{prefix}\n" + "\n".join(task_lines), tool_calls=[])
+                    
+                    rows = ["| ID | Title | Priority | Status |", "|---|---|---|---|"]
+                    for t in tasks:
+                        tid = f"#{t.get('id')}"
+                        title = str(t.get('title', '')).replace('|', '\\|')
+                        prio = str(t.get('priority', 'medium'))
+                        status = str(t.get('status', 'pending'))
+                        rows.append(f"| {tid} | {title} | {prio} | {status} |")
+                    return ModelResponse(content=f"{prefix}\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="You have no tasks matching the criteria.", tool_calls=[])
 
             elif tool_name == "search_tasks":
                 tasks = output_data.get("tasks", [])
                 if tasks:
-                    task_lines = [f"- #{t.get('id')} {t.get('title')} ({t.get('status')})" for t in tasks]
-                    return ModelResponse(content=f"Found {len(tasks)} matching task(s):\n" + "\n".join(task_lines), tool_calls=[])
+                    rows = ["| ID | Title | Status |", "|---|---|---|"]
+                    for t in tasks:
+                        tid = f"#{t.get('id')}"
+                        title = str(t.get('title', '')).replace('|', '\\|')
+                        status = str(t.get('status', 'pending'))
+                        rows.append(f"| {tid} | {title} | {status} |")
+                    return ModelResponse(content=f"Found {len(tasks)} matching task(s):\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="No matching tasks found.", tool_calls=[])
 
             # Handle skill discovery tool responses
             elif tool_name == "list_skills":
                 skills = output_data.get("skills", [])
                 if skills:
-                    skill_list_str = "\n".join([f"- **{s.get('name')}**: {s.get('description')}" for s in skills])
-                    return ModelResponse(content=f"I have {len(skills)} modular skills available:\n{skill_list_str}", tool_calls=[])
+                    rows = ["| Skill Name | Description |", "|---|---|"]
+                    for s in skills:
+                        name = str(s.get('name', '')).replace('|', '\\|')
+                        desc = str(s.get('description', '')).replace('|', '\\|')
+                        rows.append(f"| **{name}** | {desc} |")
+                    return ModelResponse(content=f"I have {len(skills)} modular skills available:\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="No modular skills are currently registered.", tool_calls=[])
 
             elif tool_name == "get_skill_info":
@@ -171,8 +187,13 @@ class MockModelProvider(BaseModelProvider):
             elif tool_name == "list_files":
                 files = output_data.get("files", [])
                 if files:
-                    file_list_str = "\n".join([f"- {f.get('name')} ({f.get('size_bytes')} bytes)" for f in files])
-                    return ModelResponse(content=f"You currently have {len(files)} file(s) in your workspace:\n{file_list_str}", tool_calls=[])
+                    rows = ["| Filename | Size (Bytes) | Extension |", "|---|---|---|"]
+                    for f in files:
+                        fname = str(f.get('name', '')).replace('|', '\\|')
+                        size = str(f.get('size_bytes', 0))
+                        ext = str(f.get('extension', ''))
+                        rows.append(f"| `{fname}` | {size} | {ext} |")
+                    return ModelResponse(content=f"You currently have {len(files)} file(s) in your workspace:\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="Your workspace directory is currently empty.", tool_calls=[])
 
             elif tool_name == "read_file":
@@ -216,12 +237,49 @@ class MockModelProvider(BaseModelProvider):
                 files = output_data.get("workspace_files", [])
                 skills = output_data.get("available_skills", [])
                 
-                mem_summary = ", ".join([f"'{m.get('key')}': {m.get('value')}" for m in mems]) or "None"
-                task_summary = ", ".join([f"#{t.get('id')} {t.get('title')} ({t.get('priority')} priority)" for t in tasks]) or "None"
-                file_summary = ", ".join([f"{f.get('name')}" for f in files]) or "None"
+                sections = ["Here is your project context summary:"]
+                
+                if mems:
+                    sections.append("\n### 🧠 Memories\n| Key | Value |\n|---|---|")
+                    for m in mems:
+                        k = str(m.get('key', '')).replace('|', '\\|')
+                        v = str(m.get('value', '')).replace('|', '\\|')
+                        sections.append(f"| `{k}` | {v} |")
+                else:
+                    sections.append("\n### 🧠 Memories\nNo stored memories.")
+
+                if tasks:
+                    sections.append("\n### 📋 Pending Tasks\n| ID | Title | Priority | Status |\n|---|---|---|---|")
+                    for t in tasks:
+                        tid = f"#{t.get('id')}"
+                        title = str(t.get('title', '')).replace('|', '\\|')
+                        prio = str(t.get('priority', 'medium'))
+                        status = str(t.get('status', 'pending'))
+                        sections.append(f"| {tid} | {title} | {prio} | {status} |")
+                else:
+                    sections.append("\n### 📋 Pending Tasks\nNo pending tasks.")
+
+                if files:
+                    sections.append("\n### 📁 Workspace Files\n| Filename | Size (Bytes) | Extension |\n|---|---|---|")
+                    for f in files:
+                        fname = str(f.get('name', '')).replace('|', '\\|')
+                        size = str(f.get('size_bytes', 0))
+                        ext = str(f.get('extension', ''))
+                        sections.append(f"| `{fname}` | {size} | {ext} |")
+                else:
+                    sections.append("\n### 📁 Workspace Files\nNo workspace files.")
+
+                if skills:
+                    sections.append("\n### ⚡ Registered Skills\n| Skill Name | Description |\n|---|---|")
+                    for s in skills:
+                        name = str(s.get('name', '')).replace('|', '\\|')
+                        desc = str(s.get('description', '')).replace('|', '\\|')
+                        sections.append(f"| **{name}** | {desc} |")
+                else:
+                    sections.append("\n### ⚡ Registered Skills\nNo registered skills.")
                 
                 return ModelResponse(
-                    content=f"Here is your project context summary:\n- Memories: {mem_summary}\n- Pending Tasks: {task_summary}\n- Workspace Files: {file_summary}\n- Available Skills: {len(skills)} registered.",
+                    content="\n".join(sections),
                     tool_calls=[]
                 )
 
@@ -248,15 +306,24 @@ class MockModelProvider(BaseModelProvider):
             elif tool_name == "search_memory":
                 results = output_data.get("results", [])
                 if results:
-                    summary = ", ".join([f"'{r.get('key')}': {r.get('value')}" for r in results])
-                    return ModelResponse(content=f"Here is what I found in memory: {summary}", tool_calls=[])
+                    rows = ["| Key | Value |", "|---|---|"]
+                    for r in results:
+                        k = str(r.get('key', '')).replace('|', '\\|')
+                        v = str(r.get('value', '')).replace('|', '\\|')
+                        rows.append(f"| `{k}` | {v} |")
+                    return ModelResponse(content=f"Here is what I found in memory:\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="I couldn't find any matching memories.", tool_calls=[])
             
             elif tool_name == "list_memories":
-                mems = output_data.get("memories", [])
+                mems = output_data.get("mems", output_data.get("memories", []))
                 if mems:
-                    summary = ", ".join([f"'{m.get('key')}': {m.get('value')}" for m in mems])
-                    return ModelResponse(content=f"Here are all my stored memories: {summary}", tool_calls=[])
+                    rows = ["| Key | Value | Category |", "|---|---|---|"]
+                    for m in mems:
+                        k = str(m.get('key', '')).replace('|', '\\|')
+                        v = str(m.get('value', '')).replace('|', '\\|')
+                        cat = str(m.get('category', 'general'))
+                        rows.append(f"| `{k}` | {v} | {cat} |")
+                    return ModelResponse(content=f"Here are all my stored memories:\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="My memory store is currently empty.", tool_calls=[])
             
             else:
@@ -280,10 +347,10 @@ class MockModelProvider(BaseModelProvider):
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_workflow_csv_1", name="inspect_csv", arguments={"filename": "sales.csv"})])
 
             # Task management triggers
-            if "create a task" in user_content_lower or "remind me to" in user_content_lower or "add task" in user_content_lower:
-                match = re.search(r'(?:create a task to|remind me to|add task)\s+(.+)', user_content, re.IGNORECASE)
-                title = match.group(1).strip() if match else user_content
-                priority = "high" if "readme" in title.lower() or "hackathon" in title.lower() else "medium"
+            if ("create" in user_content_lower and "task" in user_content_lower) or "remind me to" in user_content_lower or "add task" in user_content_lower:
+                match = re.search(r'(?:create\s+(?:a\s+)?(?:high-priority\s+|medium-priority\s+|low-priority\s+|high\s+priority\s+|medium\s+priority\s+|low\s+priority\s+)?task\s+(?:to\s+|called\s+)?|remind\s+me\s+to\s+|add\s+task\s+)(.+)', user_content, re.IGNORECASE)
+                title = match.group(1).strip(".").strip() if match else user_content
+                priority = "high" if any(kw in user_content_lower for kw in ["high", "urgent", "critical", "demo", "readme", "hackathon"]) else "medium"
                 for tool in tools:
                     if tool.name == "create_task":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_create_task_1", name="create_task", arguments={"title": title, "priority": priority})])
@@ -319,7 +386,8 @@ class MockModelProvider(BaseModelProvider):
 
             if "what's inside" in user_content_lower or "inspect" in user_content_lower or "contents of" in user_content_lower or "analyze" in user_content_lower:
                 if "sales.csv" in user_content_lower or ".csv" in user_content_lower:
-                    fname = "sales.csv" if "sales.csv" in user_content_lower else "data.csv"
+                    match = re.search(r'([\w\-\.]+\.csv)', user_content, re.IGNORECASE)
+                    fname = match.group(1) if match else ("sales.csv" if "sales.csv" in user_content_lower else "data.csv")
                     for tool in tools:
                         if tool.name == "inspect_csv":
                             return ModelResponse(content=None, tool_calls=[ToolCall(id="call_inspect_csv_1", name="inspect_csv", arguments={"filename": fname})])
@@ -408,9 +476,9 @@ class MockModelProvider(BaseModelProvider):
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_mem_get_1", name="get_memory", arguments={"key": key})])
 
             # Search memory check
-            if "search memory" in user_content_lower or "recall" in user_content_lower or "what do you remember" in user_content_lower:
-                query_match = re.search(r'(?:search memory|recall|what do you remember about)\s+(.+)', user_content, re.IGNORECASE)
-                query = query_match.group(1).strip() if query_match else user_content
+            if user_content_lower.startswith("what is my ") or user_content_lower.startswith("what's my ") or "search memory" in user_content_lower or "recall" in user_content_lower or "what do you remember" in user_content_lower:
+                match = re.search(r'(?:what is my|what\'s my|search memory|recall|what do you remember about)\s+(.+)', user_content, re.IGNORECASE)
+                query = match.group(1).strip("?").strip() if match else user_content
                 for tool in tools:
                     if tool.name == "search_memory":
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_mem_search_1", name="search_memory", arguments={"query": query})])
@@ -422,6 +490,21 @@ class MockModelProvider(BaseModelProvider):
                         return ModelResponse(content=None, tool_calls=[ToolCall(id="call_mem_list_1", name="list_memories", arguments={})])
 
         # Default natural conversational response
+        if any(kw in user_content_lower for kw in ["who are you", "what can you do", "capabilities", "introduce yourself"]):
+            return ModelResponse(
+                content=(
+                    "I am JARVIS Nexus, an advanced modular AI assistant and cloud intelligence platform. "
+                    "I can help you with:\n"
+                    "- Workspace file intelligence (listing, reading, CSV & JSON inspection)\n"
+                    "- Project task management (creating, tracking, filtering tasks)\n"
+                    "- Persistent memory storage & retrieval\n"
+                    "- Modular skills (Data Analyst, Project Assistant, Research Assistant, Productivity Assistant)\n"
+                    "- Mathematical calculations and real-time scheduling checks.\n"
+                    "How can I assist you with your project today?"
+                ),
+                tool_calls=[]
+            )
+
         if "name" in user_content_lower:
             return ModelResponse(content="I am JARVIS Nexus, your advanced AI assistant.", tool_calls=[])
         

@@ -139,7 +139,37 @@ class MemoryStore:
                         (like_pattern, like_pattern),
                     )
                 rows = cursor.fetchall()
-                return [dict(row) for row in rows]
+                results = [dict(row) for row in rows]
+
+                if not results and query:
+                    stop_words = {"what", "is", "my", "the", "a", "an", "called", "of", "to", "in", "on", "for", "our", "are"}
+                    tokens = [t for t in query.lower().split() if t not in stop_words and len(t) > 1]
+                    if tokens:
+                        conditions = []
+                        params = []
+                        for token in tokens:
+                            tok_pattern = f"%{token}%"
+                            conditions.append("(key LIKE ? OR value LIKE ?)")
+                            params.extend([tok_pattern, tok_pattern])
+                        
+                        where_clause = " OR ".join(conditions)
+                        if category:
+                            where_clause = f"({where_clause}) AND category = ?"
+                            params.append(category)
+                        
+                        cursor = conn.execute(
+                            f"""
+                            SELECT id, key, value, category, created_at, updated_at
+                            FROM memories
+                            WHERE {where_clause}
+                            ORDER BY updated_at DESC
+                            """,
+                            tuple(params)
+                        )
+                        rows = cursor.fetchall()
+                        results = [dict(row) for row in rows]
+
+                return results
         except Exception as e:
             print(f"Error searching memory for '{query}': {e}")
             return []

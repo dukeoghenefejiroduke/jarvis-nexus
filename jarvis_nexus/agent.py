@@ -17,10 +17,10 @@ DEFAULT_TOOL_INSTRUCTIONS = (
     "Use the exact tool names provided in the available tool definitions; never invent tool names "
     "or claim a tool is unavailable without trying the supplied tool. Use tool results as the source "
     "of truth. For requests about remembered information, use memory tools rather than guessing. "
-    "After tools return results, explain the findings clearly and accurately. When presenting CSV or "
-    "dataset inspection results, ALWAYS format them as clean, structured Markdown tables (tabular form) "
-    "for metrics, column statistics, and sample rows rather than bullet points or prose paragraphs. "
-    "Never claim an action succeeded unless the tool result confirms success."
+    "After tools return results, explain the findings clearly and accurately. When presenting tool results "
+    "for task listings, file listings, skill registries, memory stores, project context summaries, and CSV/dataset "
+    "inspections, ALWAYS format them as clean, structured Markdown tables (tabular form) rather than bullet points "
+    "or prose paragraphs. Never claim an action succeeded unless the tool result confirms success."
 )
 
 

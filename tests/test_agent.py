@@ -5,7 +5,7 @@ import tempfile
 import unittest
 from jarvis_nexus.agent import Agent
 from jarvis_nexus.memory import MemoryStore
-from jarvis_nexus.models import MockModelProvider, ModelResponse, ToolCall
+from jarvis_nexus.models import MockModelProvider, ModelResponse, ToolCall, ChatMessage
 
 
 class TestModelDrivenAgent(unittest.TestCase):
@@ -57,6 +57,39 @@ class TestModelDrivenAgent(unittest.TestCase):
         agent_2 = Agent(memory_store=self.memory)
         res = agent_2.chat("Search memory project")
         self.assertIn("Nexus", res)
+
+    def test_mock_csv_filename_extraction(self) -> None:
+        tools = self.agent.tool_registry.get_definitions()
+        response = self.model.generate(
+            [ChatMessage(role="user", content="Inspect project data file financial_data.csv and summarize top rows.")],
+            system_prompt="",
+            tools=tools
+        )
+        self.assertTrue(response.tool_calls)
+        self.assertEqual(response.tool_calls[0].name, "inspect_csv")
+        self.assertEqual(response.tool_calls[0].arguments.get("filename"), "financial_data.csv")
+
+    def test_mock_identity_and_capabilities_response(self) -> None:
+        response = self.agent.chat("Hello JARVIS, who are you and what can you do?")
+        self.assertIn("JARVIS Nexus", response)
+        self.assertIn("modular skills", response.lower())
+
+    def test_mock_what_is_my_memory_query(self) -> None:
+        self.agent.chat("Remember that my demo project is called JARVIS Nexus.")
+        res = self.agent.chat("What is my demo project called?")
+        self.assertIn("JARVIS Nexus", res)
+
+    def test_mock_create_task_high_priority(self) -> None:
+        tools = self.agent.tool_registry.get_definitions()
+        response = self.model.generate(
+            [ChatMessage(role="user", content="Create a high-priority task called Prepare the JARVIS demo.")],
+            system_prompt="",
+            tools=tools
+        )
+        self.assertTrue(response.tool_calls)
+        self.assertEqual(response.tool_calls[0].name, "create_task")
+        self.assertEqual(response.tool_calls[0].arguments.get("priority"), "high")
+        self.assertIn("Prepare the JARVIS demo", response.tool_calls[0].arguments.get("title"))
 
 
 if __name__ == "__main__":

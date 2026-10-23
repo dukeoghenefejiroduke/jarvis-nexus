@@ -51,10 +51,16 @@ class GeminiProvider(BaseModelProvider):
         # Format messages for OpenAI-compatible API
         api_messages = [{"role": "system", "content": system_prompt}]
         for msg in messages:
-            m_dict = {"role": msg.role, "content": msg.content or ""}
-            if msg.name:
+            role = msg.role
+            content = msg.content or ""
+            if role == "tool":
+                role = "user"
+                content = f"Tool result for '{msg.name}': {content}"
+
+            m_dict = {"role": role, "content": content}
+            if msg.name and role != "user":
                 m_dict["name"] = msg.name
-            if msg.tool_call_id:
+            if msg.tool_call_id and role != "user":
                 m_dict["tool_call_id"] = msg.tool_call_id
             if msg.tool_calls:
                 m_dict["tool_calls"] = [
@@ -97,7 +103,7 @@ class GeminiProvider(BaseModelProvider):
             req_data = json.dumps(payload).encode("utf-8")
             req = urllib.request.Request(url, data=req_data, headers=headers, method="POST")
 
-            with urllib.request.urlopen(req, timeout=12) as resp:
+            with urllib.request.urlopen(req, timeout=30) as resp:
                 resp_bytes = resp.read()
                 data = json.loads(resp_bytes.decode("utf-8"))
 

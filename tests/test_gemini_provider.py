@@ -8,6 +8,7 @@ from io import BytesIO
 from jarvis_nexus.gemini_provider import GeminiProvider
 from jarvis_nexus.nebius_provider import NebiusProvider
 from jarvis_nexus.models import ChatMessage, ToolDefinition, ToolCall
+from jarvis_nexus.config import Config
 
 
 class TestGeminiProvider(unittest.TestCase):
@@ -17,7 +18,7 @@ class TestGeminiProvider(unittest.TestCase):
         provider = GeminiProvider(api_key="test-gemini-key")
         self.assertEqual(provider.api_key, "test-gemini-key")
         self.assertEqual(provider.base_url, "https://generativelanguage.googleapis.com/v1beta/openai/")
-        self.assertEqual(provider.model, "gemini-1.5-flash")
+        self.assertEqual(provider.model, Config.GEMINI_MODEL)
 
     @patch("jarvis_nexus.gemini_provider.Config.GEMINI_API_KEY", "")
     def test_missing_api_key_handling(self) -> None:
@@ -116,6 +117,19 @@ class TestGeminiProvider(unittest.TestCase):
 
             self.assertEqual(res.content, "Fallback response from Gemini API!")
             mock_gemini_gen.assert_called_once()
+
+    @patch("urllib.request.urlopen")
+    def test_network_socket_errors_fallback(self, mock_urlopen: MagicMock) -> None:
+        # Simulate [Errno 113] No route to host and [Errno 32] Broken pipe
+        for err in [
+            urllib.error.URLError("[Errno 113] No route to host"),
+            urllib.error.URLError("[Errno 32] Broken pipe")
+        ]:
+            mock_urlopen.side_effect = err
+            provider = GeminiProvider(api_key="fake-gemini-key")
+            res = provider.generate([ChatMessage(role="user", content="Hi")], system_prompt="Test")
+            self.assertIn("I understand", res.content)
+            self.assertIn("Offline Fallback", res.provider_mode)
 
 
 if __name__ == "__main__":

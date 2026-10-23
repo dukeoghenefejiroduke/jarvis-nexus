@@ -19,6 +19,7 @@ class TestNebiusProvider(unittest.TestCase):
         self.assertEqual(provider.model, "nvidia/Nemotron-3_5-Lightning")
 
     @patch("jarvis_nexus.nebius_provider.Config.NEBIUS_API_KEY", "")
+    @patch("jarvis_nexus.nebius_provider.Config.GEMINI_API_KEY", "")
     def test_missing_api_key_handling(self) -> None:
         provider = NebiusProvider(api_key="")
         res = provider.generate([ChatMessage(role="user", content="Hello")], system_prompt="Test")
