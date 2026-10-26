@@ -325,6 +325,45 @@ class MockModelProvider(BaseModelProvider):
                         rows.append(f"| `{k}` | {v} | {cat} |")
                     return ModelResponse(content=f"Here are all my stored memories:\n\n" + "\n".join(rows), tool_calls=[])
                 return ModelResponse(content="My memory store is currently empty.", tool_calls=[])
+
+            elif tool_name in ["qloo_recommend", "qloo_trending", "qloo_geographic", "qloo_compare"]:
+                recs = output_data.get("recommendations", [])
+                seed = output_data.get("seed", {})
+                seeds = output_data.get("seeds", [])
+                if recs:
+                    msg_prefix = "Here are the cultural recommendations:"
+                    if tool_name == "qloo_trending":
+                        msg_prefix = "Here are the trending entities:"
+                    elif tool_name == "qloo_recommend" and seed.get("name"):
+                        msg_prefix = f"Here are cultural recommendations based on **{seed.get('name')}**:"
+                    elif tool_name == "qloo_recommend" and seeds:
+                        seed_names = ", ".join(s.get("name", "") for s in seeds)
+                        msg_prefix = f"Here are cultural recommendations based on seeds: **{seed_names}**:"
+                    cards_html = f"<div style='margin-bottom: 6px; font-weight: 600;'>{msg_prefix}</div>"
+                    cards_html += "<div style='display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding: 8px 0; max-width: 100%;'>"
+                    for r in recs[:10]:
+                        name = str(r.get("name", "Unnamed"))
+                        rtype = str(r.get("type", "Entity"))
+                        props = r.get("properties", {})
+                        img = props.get("image", "")
+                        desc = str(props.get("description", r.get("explainability", ""))[:90])
+                        year = props.get("release_year", "")
+                        img_html = f"<img src='{img}' alt='{name}' style='width: 100%; height: 110px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; background: rgba(0,0,0,0.1);' onerror='this.style.display=\"none\"'>" if img else ""
+                        year_str = f" ({year})" if year else ""
+                        cards_html += f"""
+                        <div style="background: var(--card-bg, #1e293b); border: 1px solid var(--border, #334155); border-radius: 8px; padding: 10px; flex: 0 0 240px; scroll-snap-align: start; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+                            <div>
+                                {img_html}
+                                <div style="font-weight: bold; font-size: 0.9rem; margin-bottom: 2px;">{name}</div>
+                                <div style="font-size: 0.75rem; color: var(--text-muted, #94a3b8); margin-bottom: 4px;">{rtype}{year_str}</div>
+                                <div style="font-size: 0.8rem; line-height: 1.2; color: var(--text-secondary, #cbd5e1);">{desc}</div>
+                            </div>
+                        </div>
+                        """
+                    cards_html += "</div>"
+                    return ModelResponse(content=cards_html, tool_calls=[])
+                err = output_data.get("error", "No recommendations found.")
+                return ModelResponse(content=f"Qloo Cultural Intelligence result: {err}", tool_calls=[])
             
             else:
                 return ModelResponse(content=f"Tool {tool_name} executed successfully with result: {tool_output_str}", tool_calls=[])
@@ -332,6 +371,38 @@ class MockModelProvider(BaseModelProvider):
         # Otherwise, inspect user message and decide whether to call a tool
         user_content = last_msg.content.strip()
         user_content_lower = user_content.lower()
+
+        if tools:
+            # Qloo Cultural Intelligence triggers
+            if any(kw in user_content_lower for kw in ["trending", "trend right now", "trending movies", "trending artists", "trending books", "latest"]):
+                category = "movie"
+                if "artist" in user_content_lower:
+                    category = "artist"
+                elif "book" in user_content_lower:
+                    category = "book"
+                elif "tv" in user_content_lower or "show" in user_content_lower:
+                    category = "tv_show"
+                elif "brand" in user_content_lower:
+                    category = "brand"
+                for tool in tools:
+                    if tool.name == "qloo_trending":
+                        return ModelResponse(content=None, tool_calls=[ToolCall(id="call_qloo_trend_1", name="qloo_trending", arguments={"category": category})])
+
+            if any(kw in user_content_lower for kw in ["recommend", "similar to", "artists like", "movies like", "taste profile", "like "]):
+                match = re.search(r'(?:recommend\s+(?:movies|artists|books|shows|tv shows|brands)?\s*(?:similar\s+to|like)?|similar\s+to|like)\s+(.+)', user_content, re.IGNORECASE)
+                query = match.group(1).strip("?").strip() if match else "Burna Boy"
+                seed_type = "artist"
+                if "movie" in user_content_lower or "film" in user_content_lower:
+                    seed_type = "movie"
+                elif "book" in user_content_lower:
+                    seed_type = "book"
+                elif "tv" in user_content_lower or "show" in user_content_lower:
+                    seed_type = "tv_show"
+                elif "brand" in user_content_lower:
+                    seed_type = "brand"
+                for tool in tools:
+                    if tool.name == "qloo_recommend":
+                        return ModelResponse(content=None, tool_calls=[ToolCall(id="call_qloo_rec_1", name="qloo_recommend", arguments={"query": query, "seed_type": seed_type, "target_type": "movie" if seed_type == "artist" else "artist", "explainability": True})])
 
         if tools:
             # Context intelligence triggers

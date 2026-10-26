@@ -12,6 +12,7 @@ from jarvis_nexus.file_tools import register_file_tools
 from jarvis_nexus.skill_tools import register_skill_tools
 from jarvis_nexus.task_tools import register_task_tools
 from jarvis_nexus.context_tools import register_context_tools
+from jarvis_nexus.qloo_tools import register_qloo_tools
 
 
 class ToolRegistry:
@@ -270,3 +271,6 @@ class ToolRegistry:
 
         # 12. Register Context Intelligence Tools
         register_context_tools(self, context_manager=self.context_manager)
+
+        # 13. Register Qloo Cultural Intelligence Tools
+        register_qloo_tools(self)

@@ -20,6 +20,11 @@ class Config:
     GEMINI_BASE_URL: str = os.getenv("GEMINI_BASE_URL", "https://generativelanguage.googleapis.com/v1beta/openai/")
     GEMINI_MODEL: str = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
 
+    QLOO_API_KEY: str = os.getenv("QLOO_API_KEY", "")
+    QLOO_BASE_URL: str = os.getenv(
+        "QLOO_BASE_URL", "https://hackathon.api.qloo.com"
+    )
+
     MODEL_PROVIDER: str = os.getenv("MODEL_PROVIDER", "mock").lower()
 
     @classmethod

@@ -27,6 +27,16 @@ from jarvis_nexus.security import redact_secrets, safe_exception_message
 from jarvis_nexus.protocols import ProtocolEngine
 from jarvis_nexus.telemetry import TelemetryManager
 from jarvis_nexus.audit import AuditManager
+from jarvis_nexus.qloo_provider import QlooProvider
+from jarvis_nexus.cultural_studio import (
+    handle_cultural_recommend,
+    handle_cultural_trending,
+    handle_cultural_geographic,
+    handle_cultural_compare,
+    handle_cultural_favorites_get,
+    handle_cultural_favorites_post,
+    handle_cultural_favorites_delete,
+)
 
 
 # Global shared instances for the Demo UI session
@@ -209,6 +219,7 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         <button id="navProtocolsBtn" onclick="switchTab('protocols', this)">⚡ Protocols</button>
         <button id="navSkillsBtn" onclick="switchTab('skills', this)">⚡ Skills</button>
         <button id="navContextBtn" onclick="switchTab('context', this)">🔍 Context</button>
+        <button id="navCulturalBtn" onclick="switchTab('cultural', this)">🌍 Cultural Intelligence</button>
         <button id="navDemoFlowBtn" onclick="runDemoFlow()">🚀 Demo Flow</button>
     </nav>
 
@@ -402,7 +413,405 @@ HTML_TEMPLATE = """<!DOCTYPE html>
         </div>
     </div>
 
+
+    <!-- CULTURAL INTELLIGENCE TAB -->
+    <div id="tab-cultural" class="tab-content card">
+        <h2>🌍 Cultural Intelligence Studio</h2>
+        <p>Explore cross-category cultural connections, multi-interest taste profiles, explainability, trending insights, and saved favorites using Qloo API v2.</p>
+
+        <div style="display: flex; gap: 10px; margin-bottom: 16px; border-bottom: 1px solid var(--border); padding-bottom: 10px;">
+            <button class="btn active" id="cultSubBtnRecs" onclick="switchCulturalSub('recs')">🌟 Recommendations & Taste</button>
+            <button class="btn" id="cultSubBtnInsights" onclick="switchCulturalSub('insights')">📊 Trending & Geographic</button>
+            <button class="btn" id="cultSubBtnFavorites" onclick="switchCulturalSub('favorites')">⭐ Saved Favorites</button>
+        </div>
+
+        <!-- SUB-VIEW: RECOMMENDATIONS & TASTE PROFILES -->
+        <div id="cultSubRecs" class="cult-subview">
+            <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <label style="font-weight: bold;">Interest Seeds (Multi-Interest Taste Profile)</label>
+                <button class="btn" type="button" onclick="addCultInterestField()" style="font-size:0.8rem; padding:4px 8px;">+ Add Interest</button>
+            </div>
+            <div id="culturalInputsContainer">
+                <div style="display:flex; gap:8px; margin-bottom:8px;">
+                    <input type="text" class="cultural-query-input" maxlength="200" placeholder="e.g. Burna Boy" style="flex:1;">
+                    <button class="btn" type="button" onclick="this.parentElement.remove()" style="background:var(--danger); padding:4px 10px;">✕</button>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0;">
+                <div>
+                    <label for="culturalSeedType">Seed Category</label>
+                    <select id="culturalSeedType" style="width:100%; margin:4px 0;">
+                        <option value="artist">Artist / musician</option>
+                        <option value="movie">Movie</option>
+                        <option value="tv_show">TV show</option>
+                        <option value="book">Book</option>
+                        <option value="brand">Brand</option>
+                        <option value="destination">Destination</option>
+                        <option value="person">Person</option>
+                        <option value="place">Place</option>
+                        <option value="podcast">Podcast</option>
+                        <option value="videogame">Video game</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="culturalTargetType">Target Category (Recommend)</label>
+                    <select id="culturalTargetType" style="width:100%; margin:4px 0;">
+                        <option value="artist">Artists / musicians</option>
+                        <option value="movie" selected>Movies</option>
+                        <option value="tv_show">TV shows</option>
+                        <option value="book">Books</option>
+                        <option value="brand">Brands</option>
+                        <option value="destination">Destinations</option>
+                        <option value="place">Places</option>
+                        <option value="podcast">Podcasts</option>
+                        <option value="videogame">Video games</option>
+                    </select>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 16px; align-items: center; margin: 12px 0;">
+                <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
+                    <input type="checkbox" id="culturalExplainCheckbox"> Include Explainability & Metadata
+                </label>
+                <div style="flex: 1;">
+                    <input type="text" id="culturalLocationInput" maxlength="100" placeholder="Optional Location filter (e.g. New York City)" style="width:100%;">
+                </div>
+            </div>
+
+            <button class="btn" id="culturalRunBtn" onclick="runCulturalSearch()" style="width:100%; margin-top:8px;">
+                Find Cultural Connections
+            </button>
+        </div>
+
+        <!-- SUB-VIEW: TRENDING & GEOGRAPHIC -->
+        <div id="cultSubInsights" class="cult-subview" style="display:none;">
+            <h3>Trending & Market Insights</h3>
+            <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 12px 0;">
+                <div>
+                    <label for="culturalTrendCategory">Trending Category</label>
+                    <select id="culturalTrendCategory" style="width:100%; margin:4px 0;">
+                        <option value="movie">Movies</option>
+                        <option value="artist">Artists</option>
+                        <option value="tv_show">TV Shows</option>
+                        <option value="book">Books</option>
+                        <option value="videogame">Video Games</option>
+                    </select>
+                    <button class="btn" onclick="runCulturalTrending()" style="margin-top:8px; width:100%;">Fetch Trending Entities</button>
+                </div>
+                <div>
+                    <label for="culturalGeoLocation">Geographic Location Discovery</label>
+                    <input type="text" id="culturalGeoLocation" placeholder="e.g. Tokyo" style="width:100%; margin:4px 0;">
+                    <input type="text" id="culturalGeoSeed" placeholder="Seed Entity Name (e.g. Cyberpunk)" style="width:100%; margin:4px 0;">
+                    <button class="btn" onclick="runCulturalGeographic()" style="margin-top:8px; width:100%;">Explore by Location</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- SUB-VIEW: SAVED FAVORITES -->
+        <div id="cultSubFavorites" class="cult-subview" style="display:none;">
+            <h3>Saved Cultural Discoveries</h3>
+            <button class="btn" onclick="loadCulturalFavorites()" style="margin-bottom: 12px;">Refresh Favorites</button>
+            <div id="culturalFavoritesList">Click refresh to load saved favorites.</div>
+        </div>
+
+        <p id="culturalStatus" role="status" style="margin-top:16px; font-weight:bold;"></p>
+        <div id="culturalResults" style="margin-top:16px; display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;"></div>
+    </div>
+
     <script>
+        function switchCulturalSub(subName) {
+            document.querySelectorAll('.cult-subview').forEach(el => el.style.display = 'none');
+            document.querySelectorAll('#tab-cultural button[onclick^="switchCulturalSub"]').forEach(el => el.classList.remove('active'));
+
+            if (subName === 'recs') {
+                document.getElementById('cultSubRecs').style.display = 'block';
+                document.getElementById('cultSubBtnRecs').classList.add('active');
+            } else if (subName === 'insights') {
+                document.getElementById('cultSubInsights').style.display = 'block';
+                document.getElementById('cultSubBtnInsights').classList.add('active');
+            } else if (subName === 'favorites') {
+                document.getElementById('cultSubFavorites').style.display = 'block';
+                document.getElementById('cultSubBtnFavorites').classList.add('active');
+                loadCulturalFavorites();
+            }
+        }
+
+        function addCultInterestField() {
+            const container = document.getElementById('culturalInputsContainer');
+            if (container.children.length >= 5) {
+                alert('Maximum 5 interest seeds allowed per request.');
+                return;
+            }
+            const div = document.createElement('div');
+            div.style.cssText = 'display:flex; gap:8px; margin-bottom:8px;';
+            div.innerHTML = `<input type="text" class="cultural-query-input" maxlength="200" placeholder="Another interest" style="flex:1;"><button class="btn" type="button" onclick="this.parentElement.remove()" style="background:var(--danger); padding:4px 10px;">✕</button>`;
+            container.appendChild(div);
+        }
+
+        async function runCulturalSearch() {
+            const inputs = document.querySelectorAll('.cultural-query-input');
+            const queries = Array.from(inputs).map(i => i.value.trim()).filter(Boolean);
+            const seedType = document.getElementById('culturalSeedType').value;
+            const targetType = document.getElementById('culturalTargetType').value;
+            const explainability = document.getElementById('culturalExplainCheckbox').checked;
+            const location = document.getElementById('culturalLocationInput').value.trim();
+            const status = document.getElementById('culturalStatus');
+            const results = document.getElementById('culturalResults');
+            const button = document.getElementById('culturalRunBtn');
+
+            results.replaceChildren();
+            if (!queries.length) {
+                status.textContent = 'Enter at least one interest seed first.';
+                return;
+            }
+
+            status.textContent = 'Querying Qloo Cultural Intelligence…';
+            button.disabled = true;
+            try {
+                const response = await fetch('/api/cultural/recommend', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        queries: queries,
+                        seed_type: seedType,
+                        target_type: targetType,
+                        explainability: explainability,
+                        location: location
+                    })
+                });
+                const data = await response.json();
+
+                if (!response.ok || data.error) {
+                    throw new Error(data.error || 'The request failed.');
+                }
+
+                status.textContent = `Found ${data.recommendations.length} recommendations based on seeds: ${data.seeds.map(s => s.name).join(', ')}`;
+                renderCulturalCards(data.recommendations, results);
+            } catch (error) {
+                status.textContent = error.message || 'Could not complete the search.';
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        async function runCulturalTrending() {
+            const category = document.getElementById('culturalTrendCategory').value;
+            const status = document.getElementById('culturalStatus');
+            const results = document.getElementById('culturalResults');
+            results.replaceChildren();
+            status.textContent = 'Fetching trending entities…';
+            try {
+                const response = await fetch('/api/cultural/trending', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({category: category})
+                });
+                const data = await response.json();
+                if (!response.ok || data.error) throw new Error(data.error || 'Trending request failed.');
+                status.textContent = `Trending ${category}s returned: ${data.recommendations.length}`;
+                renderCulturalCards(data.recommendations, results);
+            } catch (err) {
+                status.textContent = err.message;
+            }
+        }
+
+        async function runCulturalGeographic() {
+            const location = document.getElementById('culturalGeoLocation').value.trim();
+            const seedName = document.getElementById('culturalGeoSeed').value.trim();
+            const status = document.getElementById('culturalStatus');
+            const results = document.getElementById('culturalResults');
+            if (!location || !seedName) {
+                status.textContent = 'Enter both location and seed entity name.';
+                return;
+            }
+            results.replaceChildren();
+            status.textContent = 'Exploring geographic connections…';
+            try {
+                // First resolve seed name to ID
+                const searchRes = await fetch('/api/cultural/recommend', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({queries: [seedName], seed_type: 'movie', target_type: 'movie'})
+                });
+                const searchData = await searchRes.json();
+                if (!searchData.seeds || !searchData.seeds.length) throw new Error('Seed entity not found.');
+                const seedId = searchData.seeds[0].entity_id;
+
+                const geoRes = await fetch('/api/cultural/geographic', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({location: location, seed_entity_id: seedId, target_type: 'destination'})
+                });
+                const geoData = await geoRes.json();
+                if (!geoRes.ok || geoData.error) throw new Error(geoData.error || 'Geographic request failed.');
+                status.textContent = `Geographic results for ${location}: ${geoData.recommendations.length}`;
+                renderCulturalCards(geoData.recommendations, results);
+            } catch (err) {
+                status.textContent = err.message;
+            }
+        }
+
+        async function loadCulturalFavorites() {
+            const container = document.getElementById('culturalFavoritesList');
+            container.replaceChildren();
+            try {
+                const res = await fetch('/api/cultural/favorites');
+                const data = await res.json();
+                if (!data.favorites || !data.favorites.length) {
+                    container.textContent = 'No saved favorites yet.';
+                    return;
+                }
+                const grid = document.createElement('div');
+                grid.style.cssText = 'display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;';
+                renderCulturalCards(data.favorites, grid, true);
+                container.appendChild(grid);
+            } catch (err) {
+                container.textContent = 'Failed to load favorites.';
+            }
+        }
+
+        async function saveCulturalFavorite(itemJsonStr) {
+            try {
+                const item = JSON.parse(itemJsonStr);
+                const res = await fetch('/api/cultural/favorites', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({entity: item})
+                });
+                const data = await res.json();
+                if (data.success) {
+                    alert('Saved to favorites!');
+                } else {
+                    alert('Failed to save favorite.');
+                }
+            } catch (err) {
+                alert('Error saving favorite.');
+            }
+        }
+
+        async function deleteCulturalFavorite(entityId) {
+            try {
+                const res = await fetch(`/api/cultural/favorites?entity_id=${encodeURIComponent(entityId)}`, {
+                    method: 'DELETE'
+                });
+                const data = await res.json();
+                if (data.success) {
+                    loadCulturalFavorites();
+                } else {
+                    alert('Failed to remove favorite.');
+                }
+            } catch (err) {
+                alert('Error removing favorite.');
+            }
+        }
+
+        function renderCulturalCards(items, container, isFavoriteView = false) {
+            container.replaceChildren();
+            for (const item of items) {
+                const card = document.createElement('div');
+                card.style.cssText = 'background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box; width: 100%;';
+
+                const topDiv = document.createElement('div');
+
+                if (item.properties && item.properties.image) {
+                    const img = document.createElement('img');
+                    img.src = item.properties.image;
+                    img.alt = item.name || 'Entity image';
+                    img.loading = 'lazy';
+                    img.style.cssText = 'width: 100%; height: 140px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; background: var(--bg);';
+                    img.onerror = () => { img.style.display = 'none'; };
+                    topDiv.appendChild(img);
+                }
+
+                const title = document.createElement('h4');
+                title.textContent = item.name;
+                title.style.margin = '0 0 4px 0';
+                topDiv.appendChild(title);
+
+                const meta = document.createElement('p');
+                let metaText = `${item.type || 'Entity'}`;
+                if (item.properties && item.properties.release_year) {
+                    metaText += ` (${item.properties.release_year})`;
+                }
+                meta.textContent = metaText;
+                meta.style.cssText = 'font-size: 0.8rem; color: var(--text-muted); margin: 0 0 6px 0;';
+                topDiv.appendChild(meta);
+
+                if (item.properties && item.properties.description) {
+                    const desc = document.createElement('p');
+                    desc.textContent = item.properties.description;
+                    desc.style.cssText = 'font-size: 0.85rem; margin: 0 0 8px 0; line-height: 1.3;';
+                    topDiv.appendChild(desc);
+                }
+
+                if (item.explainability) {
+                    const expLabel = document.createElement('div');
+                    expLabel.textContent = 'Why recommended:';
+                    expLabel.style.cssText = 'font-size: 0.75rem; font-weight: bold; color: var(--accent); margin-bottom: 2px;';
+                    topDiv.appendChild(expLabel);
+
+                    const exp = document.createElement('p');
+                    exp.textContent = typeof item.explainability === 'string' ? item.explainability : (item.explainability.description || JSON.stringify(item.explainability));
+                    exp.style.cssText = 'font-size: 0.8rem; color: var(--text-secondary); margin: 0 0 8px 0; background: var(--bg); padding: 4px; border-radius: 4px;';
+                    topDiv.appendChild(exp);
+                }
+
+                if (item.tags && item.tags.length) {
+                    const tagsLabel = document.createElement('div');
+                    tagsLabel.textContent = 'Related tags:';
+                    tagsLabel.style.cssText = 'font-size: 0.75rem; font-weight: bold; color: var(--text-muted); margin-bottom: 2px;';
+                    topDiv.appendChild(tagsLabel);
+
+                    const tagsDiv = document.createElement('div');
+                    tagsDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;';
+                    for (const t of item.tags.slice(0, 6)) {
+                        const badge = document.createElement('span');
+                        badge.textContent = t.name || t.id;
+                        badge.style.cssText = 'font-size: 0.7rem; background: var(--bg); border: 1px solid var(--border); padding: 2px 6px; border-radius: 10px; color: var(--text-secondary);';
+                        tagsDiv.appendChild(badge);
+                    }
+                    topDiv.appendChild(tagsDiv);
+                }
+
+                card.appendChild(topDiv);
+
+                const bottomDiv = document.createElement('div');
+                bottomDiv.style.cssText = 'display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;';
+
+                if (item.external) {
+                    for (const [srcName, url] of Object.entries(item.external)) {
+                        if (typeof url === 'string' && (url.startsWith('https://') || url.startsWith('http://'))) {
+                            const link = document.createElement('a');
+                            link.href = url;
+                            link.target = '_blank';
+                            link.rel = 'noopener noreferrer';
+                            link.textContent = srcName.toUpperCase();
+                            link.style.cssText = 'font-size: 0.75rem; color: var(--accent); text-decoration: underline;';
+                            bottomDiv.appendChild(link);
+                        }
+                    }
+                }
+
+                const actionBtn = document.createElement('button');
+                actionBtn.className = 'btn';
+                actionBtn.style.cssText = 'font-size: 0.75rem; padding: 4px 8px; margin-left: auto;';
+                if (isFavoriteView) {
+                    actionBtn.textContent = 'Remove';
+                    actionBtn.style.background = 'var(--danger)';
+                    actionBtn.onclick = () => deleteCulturalFavorite(item.entity_id);
+                } else {
+                    actionBtn.textContent = '⭐ Favorite';
+                    const itemStr = JSON.stringify(item);
+                    actionBtn.onclick = () => saveCulturalFavorite(itemStr);
+                }
+                bottomDiv.appendChild(actionBtn);
+
+                card.appendChild(bottomDiv);
+                container.appendChild(card);
+            }
+        }
+
         function switchTab(tabName, btnElement) {
             try {
                 document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -797,7 +1206,11 @@ HTML_TEMPLATE = """<!DOCTYPE html>
                 const data = await res.json();
                 const badge = document.getElementById('providerBadge');
                 if (badge && data.provider_mode) {
-                    badge.textContent = data.provider_mode;
+                    let text = data.provider_mode;
+                    if (data.qloo_mode) {
+                        text += ` | Qloo: ${data.qloo_mode}`;
+                    }
+                    badge.textContent = text;
                     if (data.provider_mode.includes('Active') && data.provider_mode.includes('Nebius')) {
                         badge.style.background = 'rgba(34, 197, 94, 0.1)';
                         badge.style.color = 'var(--success)';
@@ -1014,6 +1427,10 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 
         function renderMarkdown(text) {
             if (!text) return '';
+            let strText = String(text).trim();
+            if (strText.startsWith('<div')) {
+                return strText;
+            }
             let lines = String(text).split('\\n');
             let htmlLines = [];
             let inTable = false;
@@ -1195,6 +1612,80 @@ HTML_TEMPLATE = """<!DOCTYPE html>
 """
 
 
+ALLOWED_CATEGORIES = {
+    "artist": "urn:entity:artist",
+    "movie": "urn:entity:movie",
+    "tv_show": "urn:entity:tv_show",
+    "book": "urn:entity:book",
+    "brand": "urn:entity:brand",
+    "destination": "urn:entity:destination",
+    "person": "urn:entity:person",
+    "place": "urn:entity:place",
+    "podcast": "urn:entity:podcast",
+    "videogame": "urn:entity:videogame",
+}
+
+
+def serialize_entity(item: dict) -> dict:
+    props = item.get("properties") or {}
+    image = props.get("image") or item.get("image") or ""
+    if isinstance(image, dict):
+        image = image.get("url") or image.get("source") or ""
+
+    raw_tags = item.get("tags") or props.get("tags") or []
+    tags = []
+    for t in raw_tags[:15]:
+        if isinstance(t, dict):
+            tags.append({
+                "id": str(t.get("id") or ""),
+                "name": str(t.get("name") or ""),
+                "type": str(t.get("type") or ""),
+            })
+        elif isinstance(t, str):
+            tags.append({"id": t, "name": t, "type": "tag"})
+
+    raw_ext = item.get("external") or props.get("external") or {}
+    external = {}
+    if isinstance(raw_ext, dict):
+        for k, v in raw_ext.items():
+            if isinstance(v, str) and v.startswith(("http://", "https://")):
+                external[k] = v
+            elif isinstance(v, dict) and "url" in v:
+                external[k] = str(v["url"])
+
+    websites = props.get("websites") or item.get("websites") or []
+    if isinstance(websites, list):
+        valid_webs = [w for w in websites if isinstance(w, str) and w.startswith(("http://", "https://"))]
+        if valid_webs:
+            external["website"] = valid_webs[0]
+
+    return {
+        "entity_id": str(item.get("entity_id") or item.get("id") or ""),
+        "name": str(item.get("name") or "Unnamed result")[:200],
+        "type": str(item.get("type") or ""),
+        "subtype": str(item.get("subtype") or ""),
+        "disambiguation": str(item.get("disambiguation") or ""),
+        "popularity": item.get("popularity"),
+        "properties": {
+            "description": str(props.get("description") or props.get("plot_summary") or "")[:1000],
+            "plot_summary": str(props.get("plot_summary") or "")[:1500],
+            "genre_description": str(props.get("genre_description") or ""),
+            "genres": props.get("genres") or [],
+            "keywords": props.get("keywords") or [],
+            "release_year": props.get("release_year") or props.get("release_date") or "",
+            "duration": props.get("duration") or "",
+            "content_rating": props.get("content_rating") or "",
+            "production_companies": props.get("production_companies") or [],
+            "filming_location": props.get("filming_location") or [],
+            "release_country": props.get("release_country") or "",
+            "image": str(image),
+        },
+        "tags": tags,
+        "external": external,
+        "explainability": item.get("explainability") or props.get("explainability") or None,
+    }
+
+
 class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
     """HTTP request handler for JARVIS Nexus Demo UI API and frontend."""
 
@@ -1236,6 +1727,9 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(HTML_TEMPLATE.encode("utf-8"))
 
         elif path == "/api/status":
+            qloo_configured = bool(Config.QLOO_API_KEY and Config.QLOO_API_KEY not in ("your_api_key_here", "your_qloo_api_key_here"))
+            qloo_mode = "Live Qloo API Active" if qloo_configured else "Unconfigured (Missing API Key)"
+
             provider_mode = "Active (Mock Simulation)"
             if Config.MODEL_PROVIDER == "nebius":
                 if Config.NEBIUS_API_KEY and Config.NEBIUS_API_KEY not in ("your_api_key_here", "your_actual_nebius_api_key_here"):
@@ -1250,6 +1744,8 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
                 "service": "jarvis-nexus-nebius",
                 "provider": Config.MODEL_PROVIDER,
                 "provider_mode": provider_mode,
+                "qloo_configured": qloo_configured,
+                "qloo_mode": qloo_mode,
                 "memories": len(memory_store.list_memories()),
                 "tasks": len(task_store.list_tasks()),
                 "files": len(file_manager.list_files()),
@@ -1303,6 +1799,9 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             ctx = context_manager.get_project_context(q)
             self._send_json(ctx)
 
+        elif path == "/api/cultural/favorites":
+            self._send_json(handle_cultural_favorites_get(memory_store))
+
         else:
             self.send_response(404)
             self.send_header("Access-Control-Allow-Origin", "*")
@@ -1331,7 +1830,22 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self._send_json({"error": safe_exception_message(exc)})
 
     def _handle_post(self, path: str, data: Dict[str, Any]) -> None:
-        if path == "/api/chat":
+        if path == "/api/cultural/recommend":
+            self._send_json(handle_cultural_recommend(data))
+
+        elif path == "/api/cultural/trending":
+            self._send_json(handle_cultural_trending(data))
+
+        elif path == "/api/cultural/geographic":
+            self._send_json(handle_cultural_geographic(data))
+
+        elif path == "/api/cultural/compare":
+            self._send_json(handle_cultural_compare(data))
+
+        elif path == "/api/cultural/favorites":
+            self._send_json(handle_cultural_favorites_post(data, memory_store))
+
+        elif path == "/api/chat":
             msg = data.get("message", "")
             persona = data.get("persona", "default")
 
@@ -1466,6 +1980,9 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
                 self._send_json({"success": success})
             except Exception:
                 self._send_json({"success": False})
+
+        elif path == "/api/cultural/favorites":
+            self._send_json(handle_cultural_favorites_delete(query, memory_store))
 
         else:
             self.send_response(404)

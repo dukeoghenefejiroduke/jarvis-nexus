@@ -1,6 +1,7 @@
 """Tests for JARVIS Nexus Demo UI and API endpoints (Milestone 11)."""
 
 import unittest
+from unittest.mock import patch
 import urllib.request
 import json
 import threading
@@ -221,3 +222,244 @@ class TestDemoUI(unittest.TestCase):
         data = json.loads(resp.read().decode("utf-8"))
         self.assertIn("response", data)
         self.assertTrue(len(data["response"]) > 0)
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_recommend_success(self, mock_qloo_cls) -> None:
+        """Test successful cultural recommendations via API route."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.search.return_value = {
+            "results": {
+                "entities": [{"name": "Burna Boy", "entity_id": "artist_123"}]
+            }
+        }
+        mock_instance.insights.return_value = {
+            "results": {
+                "entities": [{"name": "Wizkid", "entity_id": "artist_456"}]
+            }
+        }
+
+        payload = json.dumps({
+            "query": "Burna Boy",
+            "seed_type": "artist",
+            "target_type": "artist"
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/recommend",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(data["seed"]["name"], "Burna Boy")
+        self.assertEqual(data["seed"]["entity_id"], "artist_123")
+        self.assertEqual(len(data["recommendations"]), 1)
+        self.assertEqual(data["recommendations"][0]["name"], "Wizkid")
+
+    def test_api_cultural_recommend_missing_query(self) -> None:
+        """Test validation error when query is empty."""
+        payload = json.dumps({"query": "", "seed_type": "artist", "target_type": "artist"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/recommend",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertIn("error", data)
+        self.assertIn("Enter an interest", data["error"])
+
+    def test_api_cultural_recommend_invalid_category(self) -> None:
+        """Test validation error when category is unsupported."""
+        payload = json.dumps({"query": "Test", "seed_type": "invalid_cat", "target_type": "artist"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/recommend",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertIn("error", data)
+        self.assertIn("Unsupported entity category", data["error"])
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_recommend_no_matching_entity(self, mock_qloo_cls) -> None:
+        """Test error handling when Qloo finds no matching entity."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.search.return_value = {"results": {"entities": []}}
+
+        payload = json.dumps({"query": "UnknownXYZ", "seed_type": "artist", "target_type": "artist"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/recommend",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertIn("error", data)
+        self.assertIn("no matching entity", data["error"])
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_recommend_api_failure(self, mock_qloo_cls) -> None:
+        """Test error handling when Qloo API raises an exception."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.search.side_effect = RuntimeError("Qloo API unavailable")
+
+        payload = json.dumps({"query": "Burna Boy", "seed_type": "artist", "target_type": "artist"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/recommend",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertIn("error", data)
+        self.assertIn("Qloo API unavailable", data["error"])
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_multi_interest_and_explainability(self, mock_qloo_cls) -> None:
+        """Test multi-interest recommendation and explainability feature."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.search.return_value = {
+            "results": {"entities": [{"name": "Seed Entity", "entity_id": "s_1"}]}
+        }
+        mock_instance.insights.return_value = {
+            "results": {
+                "entities": [{"name": "Result Entity", "entity_id": "r_1", "explainability": "Matched shared genres"}]
+            }
+        }
+
+        payload = json.dumps({
+            "queries": ["Burna Boy", "Wizkid"],
+            "seed_type": "artist",
+            "target_type": "movie",
+            "explainability": True
+        }).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/recommend",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(len(data["seeds"]), 2)
+        self.assertEqual(len(data["recommendations"]), 1)
+        self.assertEqual(data["recommendations"][0]["explainability"], "Matched shared genres")
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_trending(self, mock_qloo_cls) -> None:
+        """Test trending API route."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.trending.return_value = {
+            "results": {"entities": [{"name": "Trending Movie", "entity_id": "t_1"}]}
+        }
+        payload = json.dumps({"category": "movie"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/trending",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(len(data["recommendations"]), 1)
+        self.assertEqual(data["recommendations"][0]["name"], "Trending Movie")
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_geographic(self, mock_qloo_cls) -> None:
+        """Test geographic insights API route."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.geographic.return_value = {
+            "results": {"entities": [{"name": "Tokyo Spot", "entity_id": "g_1"}]}
+        }
+        payload = json.dumps({"location": "Tokyo", "seed_entity_id": "s_1", "target_type": "destination"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/geographic",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(len(data["recommendations"]), 1)
+        self.assertEqual(data["recommendations"][0]["name"], "Tokyo Spot")
+
+    @patch("jarvis_nexus.cultural_studio.QlooProvider")
+    def test_api_cultural_compare(self, mock_qloo_cls) -> None:
+        """Test entity comparison API route."""
+        mock_instance = mock_qloo_cls.return_value
+        mock_instance.compare.return_value = {
+            "results": {"entities": [{"name": "Cross Over", "entity_id": "c_1"}]}
+        }
+        payload = json.dumps({"entity_ids": ["e_1", "e_2"], "target_type": "movie"}).encode("utf-8")
+        req = urllib.request.Request(
+            f"{self.base_url}/api/cultural/compare",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp = urllib.request.urlopen(req)
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertEqual(len(data["recommendations"]), 1)
+        self.assertEqual(data["recommendations"][0]["name"], "Cross Over")
+
+    def test_api_cultural_favorites_crud(self) -> None:
+        """Test saving, listing, and deleting cultural favorites."""
+        entity = {"entity_id": "fav_test_99", "name": "Favorite Film", "type": "urn:entity:movie"}
+        payload = json.dumps({"entity": entity}).encode("utf-8")
+        req_save = urllib.request.Request(
+            f"{self.base_url}/api/cultural/favorites",
+            data=payload,
+            headers={"Content-Type": "application/json"},
+            method="POST"
+        )
+        resp_save = urllib.request.urlopen(req_save)
+        data_save = json.loads(resp_save.read().decode("utf-8"))
+        self.assertTrue(data_save["success"])
+
+        # List favorites
+        req_list = urllib.request.urlopen(f"{self.base_url}/api/cultural/favorites")
+        data_list = json.loads(req_list.read().decode("utf-8"))
+        self.assertTrue(any(f["entity_id"] == "fav_test_99" for f in data_list["favorites"]))
+
+        # Delete favorite
+        req_del = urllib.request.Request(
+            f"{self.base_url}/api/cultural/favorites?entity_id=fav_test_99",
+            method="DELETE"
+        )
+        resp_del = urllib.request.urlopen(req_del)
+        data_del = json.loads(resp_del.read().decode("utf-8"))
+        self.assertTrue(data_del["success"])
+
+    def test_entity_type_normalization_and_serialization(self) -> None:
+        from jarvis_nexus.cultural_studio import serialize_entity
+        raw_item = {
+            "entity_id": "ent_999",
+            "name": "Breaking Bad",
+            "type": "urn:entity:tv_show",
+            "properties": {
+                "image": {"url": "http://en.wikipedia.org/wiki/test.jpg"},
+                "release_year": "2008"
+            },
+            "tags": [{"name": "Drama", "type": "genre"}],
+            "explainability": "Shared audience affinity"
+        }
+        serialized = serialize_entity(raw_item)
+        self.assertEqual(serialized["type"], "TV Show")
+        self.assertEqual(serialized["type_urn"], "urn:entity:tv_show")
+        self.assertEqual(serialized["properties"]["image"], "https://en.wikipedia.org/wiki/test.jpg")
+        self.assertEqual(serialized["explainability"], "Shared audience affinity")
+        self.assertEqual(len(serialized["tags"]), 1)
+        self.assertEqual(serialized["tags"][0]["name"], "Drama")
+
+    def test_api_status_includes_qloo_mode(self) -> None:
+        """Test that /api/status endpoint includes Qloo configuration status."""
+        resp = urllib.request.urlopen(f"{self.base_url}/api/status")
+        data = json.loads(resp.read().decode("utf-8"))
+        self.assertIn("qloo_configured", data)
+        self.assertIn("qloo_mode", data)

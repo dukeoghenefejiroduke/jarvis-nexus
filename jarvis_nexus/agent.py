@@ -9,11 +9,15 @@ from jarvis_nexus.tools import ToolRegistry
 
 DEFAULT_TOOL_INSTRUCTIONS = (
     " You have access to executable tools for calculations, persistent memory, file inspection, "
-    "CSV and JSON analysis, task management, skill discovery, and project context. "
+    "CSV and JSON analysis, task management, skill discovery, project context, and Qloo cultural intelligence. "
     "IMPORTANT TOOL RULES: When a request requires a calculation, call the calculator tool. "
     "When asked to inspect a CSV file, call inspect_csv. When asked to inspect a JSON file, "
     "call inspect_json. When asked to create a task, call create_task. When asked to list tasks, "
     "call list_tasks. When asked what skills are available, call list_skills. "
+    "When asked for trending movies, artists, books, or culture, call qloo_trending. "
+    "When asked for cultural recommendations, taste profiles, or similar entities across categories, call qloo_recommend. "
+    "When asked for location-based cultural recommendations in a city/region, call qloo_geographic. "
+    "When asked to compare multiple cultural entities, call qloo_compare. "
     "Use the exact tool names provided in the available tool definitions; never invent tool names "
     "or claim a tool is unavailable without trying the supplied tool. Use tool results as the source "
     "of truth. For requests about remembered information, use memory tools rather than guessing. "

@@ -91,6 +91,39 @@ class TestModelDrivenAgent(unittest.TestCase):
         self.assertEqual(response.tool_calls[0].arguments.get("priority"), "high")
         self.assertIn("Prepare the JARVIS demo", response.tool_calls[0].arguments.get("title"))
 
+    def test_mock_qloo_trending_trigger(self) -> None:
+        tools = self.agent.tool_registry.get_definitions()
+        response = self.model.generate(
+            [ChatMessage(role="user", content="What are the trending movies right now?")],
+            system_prompt="",
+            tools=tools
+        )
+        self.assertTrue(response.tool_calls)
+        self.assertEqual(response.tool_calls[0].name, "qloo_trending")
+        self.assertEqual(response.tool_calls[0].arguments.get("category"), "movie")
+
+    def test_mock_qloo_latest_movie_trigger(self) -> None:
+        tools = self.agent.tool_registry.get_definitions()
+        response = self.model.generate(
+            [ChatMessage(role="user", content="Recommend the latest movie")],
+            system_prompt="",
+            tools=tools
+        )
+        self.assertTrue(response.tool_calls)
+        self.assertEqual(response.tool_calls[0].name, "qloo_trending")
+        self.assertEqual(response.tool_calls[0].arguments.get("category"), "movie")
+
+    def test_mock_qloo_recommend_trigger(self) -> None:
+        tools = self.agent.tool_registry.get_definitions()
+        response = self.model.generate(
+            [ChatMessage(role="user", content="Recommend artists similar to Burna Boy")],
+            system_prompt="",
+            tools=tools
+        )
+        self.assertTrue(response.tool_calls)
+        self.assertEqual(response.tool_calls[0].name, "qloo_recommend")
+        self.assertIn("Burna Boy", response.tool_calls[0].arguments.get("query"))
+
 
 if __name__ == "__main__":
     unittest.main()

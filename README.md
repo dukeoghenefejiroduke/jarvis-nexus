@@ -53,7 +53,8 @@ Developers need AI assistants that maintain context across sessions, securely in
 6. **System Protocols & Automated Macros**: Built-in automated workflows for Reset Session (`reset_session`), Workspace Audit (`workspace_audit`), and System Diagnostics (`system_diagnostics`).
 7. **Voice Synthesis & Speech Recognition**: Browser-based Text-to-Speech audio feedback and microphone speech input.
 8. **Direct Device File Upload**: Select and upload files directly from local computer/device storage into the workspace.
-9. **Zero-Dependency Web UI**: Fast responsive dashboard (`demo_ui.py`) accessible at `http://127.0.0.1:8000`.
+9. **Cultural Intelligence Studio (Qloo Integration)**: Cross-category cultural discovery powered by Qloo API v2 (`https://hackathon.api.qloo.com`) featuring multi-interest taste profiles, explainability, trending/geographic insights, tag exploration, and saved favorites.
+10. **Zero-Dependency Web UI**: Fast responsive dashboard (`demo_ui.py`) accessible at `http://127.0.0.1:8000`.
 
 ---
 
@@ -129,6 +130,16 @@ Open in your browser at: **`http://127.0.0.1:8000`**
    ```bash
    PYTHONPATH=. python demo_ui.py
    ```
+
+---
+
+## Cultural Intelligence Studio (Qloo Integration)
+JARVIS Nexus features a robust integration with Qloo API v2 (`https://hackathon.api.qloo.com`) for cross-category cultural intelligence:
+- **Configuration**: Set `QLOO_API_KEY` in your local `.env` file (which is git-ignored and never exposed to browser JavaScript or logs).
+- **Multi-Interest Taste Profiles**: Combine multiple entity seeds (artists, movies, TV shows, books, brands, destinations, video games) to generate blended cross-category recommendations.
+- **Explainability**: Enable `feature.explainability=true` to view transparent affinity reasoning returned by Qloo.
+- **Trending & Geographic Insights**: Discover trending entities across categories and filter recommendations by geographic location.
+- **Saved Favorites**: Save, view, and manage favorite discoveries persistently across restarts using SQLite (`MemoryStore`).
 
 ---
 
