@@ -46,3 +46,13 @@ def register_builtin_skills(registry: SkillRegistry) -> None:
         metadata={"category": "productivity", "domain": "task-management"}
     )
     registry.register_skill(productivity_assistant)
+
+    # 5. Cultural Intelligence Specialist Skill
+    cultural_specialist = Skill(
+        name="Cultural Intelligence Specialist",
+        description="Explore cross-category cultural connections, multi-interest taste profiles, explainability, trending insights, and geographic discoveries using Qloo API v2.",
+        version="1.0.0",
+        required_tools=["qloo_recommend", "qloo_trending", "qloo_geographic", "qloo_compare"],
+        metadata={"category": "culture", "domain": "cultural-intelligence"}
+    )
+    registry.register_skill(cultural_specialist)

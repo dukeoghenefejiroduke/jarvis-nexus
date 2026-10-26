@@ -70,6 +70,7 @@ class TestModularSkills(unittest.TestCase):
         self.assertIn("Project Assistant", skill_names)
         self.assertIn("Research Assistant", skill_names)
         self.assertIn("Productivity Assistant", skill_names)
+        self.assertIn("Cultural Intelligence Specialist", skill_names)
 
     def test_skill_tools_integration_and_agent(self) -> None:
         tool_reg = ToolRegistry()
