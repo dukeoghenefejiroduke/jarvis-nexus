@@ -8,6 +8,7 @@ from typing import Any, Callable, Dict, List, Optional
 from jarvis_nexus.memory import MemoryStore
 from jarvis_nexus.tasks import TaskStore
 from jarvis_nexus.models import ToolDefinition
+from jarvis_nexus.security import is_public_demo
 from jarvis_nexus.file_tools import register_file_tools
 from jarvis_nexus.skill_tools import register_skill_tools
 from jarvis_nexus.task_tools import register_task_tools
@@ -44,6 +45,13 @@ class ToolRegistry:
 
     def execute(self, name: str, arguments: Dict[str, Any]) -> Any:
         """Execute a registered tool by name with given arguments safely."""
+        if is_public_demo():
+            restricted_tools = {
+                "create_task", "update_task", "complete_task", "delete_task",
+                "save_memory", "update_memory", "delete_memory"
+            }
+            if name in restricted_tools:
+                return {"error": f"Tool '{name}' is disabled in Public Demo mode."}
         if name not in self.tools:
             return {"error": f"Tool '{name}' not found."}
         try:

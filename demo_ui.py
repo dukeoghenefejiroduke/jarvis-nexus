@@ -23,7 +23,7 @@ from jarvis_nexus.context import ContextManager
 from jarvis_nexus.tools import ToolRegistry
 from jarvis_nexus.agent import Agent, get_persona_prompt
 from jarvis_nexus.models import get_model_provider
-from jarvis_nexus.security import redact_secrets, safe_exception_message
+from jarvis_nexus.security import redact_secrets, safe_exception_message, is_public_demo
 from jarvis_nexus.protocols import ProtocolEngine
 from jarvis_nexus.telemetry import TelemetryManager
 from jarvis_nexus.audit import AuditManager
@@ -37,6 +37,39 @@ from jarvis_nexus.cultural_studio import (
     handle_cultural_favorites_post,
     handle_cultural_favorites_delete,
 )
+from collections import defaultdict
+
+
+class RateLimiter:
+    """In-memory sliding window rate limiter (non-distributed, non-persistent)."""
+    def __init__(self, max_requests: int = 40, window_seconds: int = 60):
+        self.max_requests = max_requests
+        self.window_seconds = window_seconds
+        self.requests = defaultdict(list)
+
+    def is_allowed(self, client_ip: str) -> bool:
+        now = time.time()
+        window_start = now - self.window_seconds
+        self.requests[client_ip] = [t for t in self.requests[client_ip] if t > window_start]
+        if len(self.requests[client_ip]) >= self.max_requests:
+            return False
+        self.requests[client_ip].append(now)
+        return True
+
+
+rate_limiter = RateLimiter(max_requests=40, window_seconds=60)
+
+
+def get_client_ip(handler: BaseHTTPRequestHandler) -> str:
+    """Determine client IP securely, respecting trusted proxy headers if JARVIS_TRUST_PROXY=true."""
+    client_ip = handler.client_address[0] if handler.client_address else "unknown"
+    if os.getenv("JARVIS_TRUST_PROXY", "").lower() in ("true", "1", "yes"):
+        xff = handler.headers.get("X-Forwarded-For")
+        if xff:
+            parts = [p.strip() for p in xff.split(",")]
+            if parts and parts[0]:
+                client_ip = parts[0]
+    return client_ip
 
 
 # Global shared instances for the Demo UI session
@@ -1703,9 +1736,19 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self) -> None:
+        client_ip = get_client_ip(self)
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
+
+        if is_public_demo() and path.startswith("/api/"):
+            if not rate_limiter.is_allowed(client_ip):
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Rate limit exceeded (max 40 requests per minute). Please try again later."}).encode("utf-8"))
+                return
 
         if path == "/health":
             payload = {
@@ -1757,6 +1800,13 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self._send_json(telemetry_manager.get_telemetry())
 
         elif path == "/api/audit/export":
+            if is_public_demo():
+                self.send_response(403)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Audit export is disabled in Public Demo mode."}).encode("utf-8"))
+                return
             fmt = query.get("format", ["json"])[0].strip().lower()
             if fmt == "json":
                 self.send_response(200)
@@ -1809,9 +1859,28 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self.wfile.write(b"Not Found")
 
     def do_POST(self) -> None:
+        client_ip = get_client_ip(self)
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
+
+        if is_public_demo() and path.startswith("/api/"):
+            if not rate_limiter.is_allowed(client_ip):
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Rate limit exceeded (max 40 requests per minute). Please try again later."}).encode("utf-8"))
+                return
+
         content_length = int(self.headers.get('Content-Length', 0))
+        if content_length > 64 * 1024:
+            self.send_response(413)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(json.dumps({"error": "Request payload too large (maximum 64KB allowed)."}).encode("utf-8"))
+            return
+
         body = self.rfile.read(content_length) if content_length > 0 else b"{}"
 
         try:
@@ -1830,6 +1899,14 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             self._send_json({"error": safe_exception_message(exc)})
 
     def _handle_post(self, path: str, data: Dict[str, Any]) -> None:
+        if is_public_demo():
+            if path in ["/api/files/create", "/api/audit/export"]:
+                self._send_json({"error": "File writing and audit export are disabled in Public Demo mode."})
+                return
+            if path in ["/api/tasks", "/api/tasks/complete", "/api/memories", "/api/cultural/favorites"]:
+                self._send_json({"error": "State modification is disabled in Public Demo mode."})
+                return
+
         if path == "/api/cultural/recommend":
             self._send_json(handle_cultural_recommend(data))
 
@@ -1964,9 +2041,23 @@ class JarvisDemoHTTPHandler(BaseHTTPRequestHandler):
             return
 
     def do_DELETE(self) -> None:
+        client_ip = get_client_ip(self)
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
+
+        if is_public_demo() and path.startswith("/api/"):
+            if not rate_limiter.is_allowed(client_ip):
+                self.send_response(429)
+                self.send_header("Content-Type", "application/json; charset=utf-8")
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(json.dumps({"error": "Rate limit exceeded (max 40 requests per minute). Please try again later."}).encode("utf-8"))
+                return
+
+        if is_public_demo() and path in ["/api/memories", "/api/tasks", "/api/cultural/favorites"]:
+            self._send_json({"success": False, "error": "State modification is disabled in Public Demo mode."})
+            return
 
         if path == "/api/memories":
             key = query.get("key", [""])[0]

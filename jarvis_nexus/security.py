@@ -1,7 +1,13 @@
 """Security and secret redaction utilities for JARVIS Nexus."""
 
 import re
+import os
 from typing import Any
+
+
+def is_public_demo() -> bool:
+    """Check if public demo hardening mode is enabled via environment variable."""
+    return os.getenv("JARVIS_PUBLIC_DEMO", "").lower() in ("true", "1", "yes")
 
 
 def redact_secrets(text: str) -> str:
