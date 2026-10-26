@@ -132,6 +132,15 @@ class TestQlooProvider(unittest.TestCase):
             with self.assertRaisesRegex(RuntimeError, "rate limit exceeded"):
                 provider.search("Afrobeats")
 
+    def test_trending_fallback_on_insights_error(self):
+        from urllib.error import HTTPError
+        provider = QlooProvider(api_key="test-secret")
+        error = HTTPError("https://example.invalid/path", 400, "Bad Request", {}, None)
+
+        with patch("jarvis_nexus.qloo_provider.urlopen", side_effect=[error, FakeResponse({"results": {"entities": [{"name": "Fallback Movie"}]}})]):
+            res = provider.trending(category="movie")
+            self.assertEqual(res["results"]["entities"][0]["name"], "Fallback Movie")
+
 
 if __name__ == "__main__":
     unittest.main()

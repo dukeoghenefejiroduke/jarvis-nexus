@@ -9,6 +9,71 @@ from urllib.request import Request, urlopen
 from jarvis_nexus.config import Config
 
 
+ALLOWED_CATEGORIES = {
+    "artist": "urn:entity:artist",
+    "movie": "urn:entity:movie",
+    "tv_show": "urn:entity:tv_show",
+    "book": "urn:entity:book",
+    "brand": "urn:entity:brand",
+    "destination": "urn:entity:destination",
+    "person": "urn:entity:person",
+    "place": "urn:entity:place",
+    "podcast": "urn:entity:podcast",
+    "videogame": "urn:entity:videogame",
+}
+
+
+def normalize_category(cat: str) -> str:
+    """Normalize category strings or aliases into valid ALLOWED_CATEGORIES keys."""
+    if not cat:
+        return "movie"
+    c = str(cat).strip().lower()
+    if c.startswith("urn:entity:"):
+        c = c[len("urn:entity:"):]
+    elif c.startswith("urn:"):
+        c = c.split(":")[-1]
+    c = c.replace("-", "_").replace(" ", "_")
+    if c in ALLOWED_CATEGORIES:
+        return c
+    aliases = {
+        "movies": "movie",
+        "film": "movie",
+        "films": "movie",
+        "artist": "artist",
+        "artists": "artist",
+        "musician": "artist",
+        "musicians": "artist",
+        "band": "artist",
+        "bands": "artist",
+        "tv": "tv_show",
+        "tv_shows": "tv_show",
+        "tvshow": "tv_show",
+        "tvshows": "tv_show",
+        "shows": "tv_show",
+        "show": "tv_show",
+        "book": "book",
+        "books": "book",
+        "brand": "brand",
+        "brands": "brand",
+        "destination": "destination",
+        "destinations": "destination",
+        "person": "person",
+        "persons": "person",
+        "people": "person",
+        "place": "place",
+        "places": "place",
+        "podcast": "podcast",
+        "podcasts": "podcast",
+        "videogame": "videogame",
+        "videogames": "videogame",
+        "video_game": "videogame",
+        "video_games": "videogame",
+        "game": "videogame",
+        "games": "videogame",
+    }
+    return aliases.get(c, "movie")
+
+
 class QlooProvider:
     """Call Qloo search and insights endpoints without exposing API credentials."""
 
@@ -100,13 +165,31 @@ class QlooProvider:
         return self._get("/v2/insights", params)
 
     def trending(self, category: str = "movie", **params: Any) -> Dict[str, Any]:
-        """Request trending entities for a category using Qloo insights."""
-        p = {
-            "filter.type": f"urn:entity:{category}",
-            "bias.trends": "high",
-            **params,
-        }
-        return self.insights(**p)
+        """Request trending entities for a category using Qloo insights or search fallback."""
+        norm_cat = normalize_category(category)
+        type_urn = ALLOWED_CATEGORIES.get(norm_cat, ALLOWED_CATEGORIES.get(category, f"urn:entity:{category}"))
+
+        try:
+            p = {
+                "filter.type": type_urn,
+                "bias.trends": "high",
+                **params,
+            }
+            return self.insights(**p)
+        except Exception:
+            take = params.get("take", 12)
+            try:
+                res = self.search(category, types=type_urn, take=take)
+                if res and (res.get("results") or res.get("entities") or res.get("items") or isinstance(res, list)):
+                    return res
+            except Exception:
+                pass
+
+            try:
+                res = self.search("popular", types=type_urn, take=take)
+                return res
+            except Exception:
+                raise RuntimeError("Qloo trending currently unavailable.")
 
     def audience(self, seed_entity_id: str, target_type: str = "movie", **params: Any) -> Dict[str, Any]:
         """Request audience-related affinity insights."""

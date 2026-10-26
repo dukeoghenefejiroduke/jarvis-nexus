@@ -339,25 +339,59 @@ class MockModelProvider(BaseModelProvider):
                     elif tool_name == "qloo_recommend" and seeds:
                         seed_names = ", ".join(s.get("name", "") for s in seeds)
                         msg_prefix = f"Here are cultural recommendations based on seeds: **{seed_names}**:"
-                    cards_html = f"<div style='margin-bottom: 6px; font-weight: 600;'>{msg_prefix}</div>"
+                    cards_html = f"<div style='margin-bottom: 8px; font-weight: 600;'>{msg_prefix}</div>"
                     cards_html += "<div style='display: flex; overflow-x: auto; scroll-snap-type: x mandatory; gap: 12px; padding: 8px 0; max-width: 100%;'>"
-                    for r in recs[:10]:
+                    for r in recs:
                         name = str(r.get("name", "Unnamed"))
                         rtype = str(r.get("type", "Entity"))
                         props = r.get("properties", {})
                         img = props.get("image", "")
-                        desc = str(props.get("description", r.get("explainability", ""))[:90])
+                        desc = str(props.get("description", props.get("plot_summary", "")))
                         year = props.get("release_year", "")
-                        img_html = f"<img src='{img}' alt='{name}' style='width: 100%; height: 110px; object-fit: cover; border-radius: 4px; margin-bottom: 6px; background: rgba(0,0,0,0.1);' onerror='this.style.display=\"none\"'>" if img else ""
+                        explainability = r.get("explainability")
+                        tags = r.get("tags", [])
+                        external = r.get("external", {})
+
+                        img_html = f"<img src='{img}' alt='{name}' style='width: 100%; height: 130px; object-fit: cover; border-radius: 6px; margin-bottom: 8px; background: rgba(0,0,0,0.1);' onerror='this.style.display=\"none\"'>" if img else ""
                         year_str = f" ({year})" if year else ""
+                        
+                        exp_html = ""
+                        if explainability:
+                            exp_text = explainability if isinstance(explainability, str) else (explainability.get("description") or json.dumps(explainability))
+                            exp_html = f"""
+                            <div style="font-size: 0.75rem; font-weight: bold; color: var(--accent, #38bdf8); margin-bottom: 2px;">Why recommended:</div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary, #cbd5e1); margin-bottom: 8px; background: rgba(0,0,0,0.2); padding: 4px; border-radius: 4px;">{exp_text}</div>
+                            """
+
+                        tags_html = ""
+                        if tags:
+                            tag_badges = "".join(f"<span style='font-size: 0.7rem; background: rgba(255,255,255,0.05); border: 1px solid var(--border, #334155); padding: 2px 6px; border-radius: 10px; color: var(--text-secondary, #cbd5e1);'>{t.get('name', t.get('id', ''))}</span>" for t in tags[:6] if t.get('name') or t.get('id'))
+                            if tag_badges:
+                                tags_html = f"""
+                                <div style="font-size: 0.75rem; font-weight: bold; color: var(--text-muted, #94a3b8); margin-bottom: 2px;">Related tags:</div>
+                                <div style="display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px;">{tag_badges}</div>
+                                """
+
+                        ext_html = ""
+                        if external:
+                            ext_links = []
+                            for src_name, url in external.items():
+                                if isinstance(url, str) and (url.startswith("https://") or url.startswith("http://")):
+                                    ext_links.append(f"<a href='{url}' target='_blank' rel='noopener noreferrer' style='font-size: 0.75rem; color: var(--accent, #38bdf8); text-decoration: underline;'>{src_name.upper()}</a>")
+                            if ext_links:
+                                ext_html = f"<div style='display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; align-items: center;'>{' '.join(ext_links)}</div>"
+
                         cards_html += f"""
-                        <div style="background: var(--card-bg, #1e293b); border: 1px solid var(--border, #334155); border-radius: 8px; padding: 10px; flex: 0 0 240px; scroll-snap-align: start; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
+                        <div style="background: var(--card-bg, #1e293b); border: 1px solid var(--border, #334155); border-radius: 8px; padding: 12px; flex: 0 0 280px; scroll-snap-align: start; display: flex; flex-direction: column; justify-content: space-between; box-sizing: border-box;">
                             <div>
                                 {img_html}
-                                <div style="font-weight: bold; font-size: 0.9rem; margin-bottom: 2px;">{name}</div>
-                                <div style="font-size: 0.75rem; color: var(--text-muted, #94a3b8); margin-bottom: 4px;">{rtype}{year_str}</div>
-                                <div style="font-size: 0.8rem; line-height: 1.2; color: var(--text-secondary, #cbd5e1);">{desc}</div>
+                                <h4 style="margin: 0 0 4px 0; font-size: 0.95rem; font-weight: bold;">{name}</h4>
+                                <p style="font-size: 0.8rem; color: var(--text-muted, #94a3b8); margin: 0 0 6px 0;">{rtype}{year_str}</p>
+                                {f'<p style="font-size: 0.85rem; margin: 0 0 8px 0; line-height: 1.3;">{desc}</p>' if desc else ''}
+                                {exp_html}
+                                {tags_html}
                             </div>
+                            {ext_html}
                         </div>
                         """
                     cards_html += "</div>"

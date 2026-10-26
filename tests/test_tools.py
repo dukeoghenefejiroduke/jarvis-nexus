@@ -3,6 +3,7 @@
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 from jarvis_nexus.memory import MemoryStore
 from jarvis_nexus.tools import ToolRegistry
 
@@ -40,7 +41,7 @@ class TestToolRegistry(unittest.TestCase):
         self.assertEqual(search_res["count"], 1)
         self.assertEqual(search_res["results"][0]["key"], "agent")
 
-    @unittest.mock.patch("jarvis_nexus.qloo_tools.handle_cultural_trending")
+    @patch("jarvis_nexus.qloo_tools.handle_cultural_trending")
     def test_qloo_trending_tool(self, mock_trending) -> None:
         mock_trending.return_value = {"recommendations": [{"name": "Trending Movie"}]}
         result = self.registry.execute("qloo_trending", {"category": "movie"})
